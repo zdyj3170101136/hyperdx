@@ -41,7 +41,7 @@ export async function setupTeamDefaults(teamId: string) {
   }
 
   // Check existing connections for this team
-  const connections = await getConnections();
+  const connections = await getConnections(teamId);
   const teamConnections = connections.filter(c => c.team.toString() === teamId);
 
   // Create default connections if none exist for this team
@@ -90,7 +90,7 @@ export async function setupTeamDefaults(teamId: string) {
     );
 
     // Get the connections again in case we just created some
-    const updatedConnections = await getConnections();
+    const updatedConnections = await getConnections(teamId);
     const teamUpdatedConnections = updatedConnections.filter(
       c => c.team.toString() === teamId,
     );

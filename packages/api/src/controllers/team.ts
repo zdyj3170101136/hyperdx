@@ -21,12 +21,8 @@ export const LOCAL_APP_TEAM = {
 };
 
 export async function isTeamExisting() {
-  if (config.IS_LOCAL_APP_MODE) {
-    return true;
-  }
-
-  const teamCount = await Team.countDocuments({});
-  return teamCount > 0;
+  // Removed the single team restriction - allow multiple teams
+  return false;
 }
 
 export async function createTeam({
@@ -52,7 +48,7 @@ export function getTeam(id?: string | ObjectId, fields?: string[]) {
     return LOCAL_APP_TEAM;
   }
 
-  return Team.findOne({}, fields);
+  return Team.findOne({ _id: id }, fields);
 }
 
 export function getTeamByApiKey(apiKey: string) {

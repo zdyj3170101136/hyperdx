@@ -15,7 +15,8 @@ const router = express.Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const connections = await getConnections();
+    const { teamId } = getNonNullUserWithTeam(req);
+    const connections = await getConnections(teamId.toString());
 
     res.json(connections.map(c => c.toJSON({ virtuals: true })));
   } catch (e) {
