@@ -294,7 +294,12 @@ export function DBRowJsonViewer({
       if (generateSearchUrl && typeof value !== 'object' && hadFilter) {
         actions.push({
           key: 'remove-filter',
-          label: 'Remove Filter',
+          label: (
+            <>
+              <i className="bi bi-x-circle me-1" />
+              Remove Filter
+            </>
+          ),
           onClick: () => {
             router.push(
               generateSearchUrl({
@@ -340,7 +345,7 @@ export function DBRowJsonViewer({
           key: 'exclude',
           label: (
             <>
-              <i className="bi bi-search me-1" />
+              <i className="bi bi-dash-circle me-1" />
               Exclude
             </>
           ),
@@ -369,7 +374,7 @@ export function DBRowJsonViewer({
           key: 'replace-filter',
           label: (
             <>
-              <i className="bi bi-search me-1" />
+              <i className="bi bi-arrow-counterclockwise me-1" />
               Replace Filter
             </>
           ),
@@ -458,13 +463,23 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: (
+            <>
+              <i className="bi bi-clipboard me-1" />
+              Copy Object
+            </>
+          ),
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: 'Copy Value',
+          label: (
+            <>
+              <i className="bi bi-copy me-1" />
+              Copy Value
+            </>
+          ),
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
