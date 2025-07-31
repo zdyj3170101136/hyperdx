@@ -208,6 +208,7 @@ export class Metadata {
     maxKeys = 1000,
     connectionId,
     metricName,
+    chartConfig,
   }: {
     databaseName: string;
     tableName: string;
@@ -215,10 +216,12 @@ export class Metadata {
     maxKeys?: number;
     connectionId: string;
     metricName?: string;
+    chartConfig?: ChartConfigWithDateRange;
   }) {
-    const cacheKey = metricName
+    let cacheKey = metricName
       ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${databaseName}.${tableName}.${column}.keys`;
+    cacheKey = `${cacheKey}.${JSON.stringify(chartConfig)}`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -249,18 +252,43 @@ export class Metadata {
       : '';
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
-      sql = chSql`SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(${{
-        Identifier: column,
-      }}) as keysArr
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
+      if (chartConfig) {
+        sql = await renderChartConfig(
+          {
+            ...chartConfig,
+            // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
+            select: `groupUniqArrayArray(${maxKeys})(${column}) as keysArr`,
+          },
+          this,
+        );
+      } else {
+        sql = chSql`SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(${{
+          Identifier: column,
+        }}) as keysArr
+        FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
+      }
     } else {
-      sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
-        Identifier: column,
-      }}.keys)) as key
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-      LIMIT ${{
-        Int32: maxKeys,
-      }}`;
+      if (chartConfig) {
+        chartConfig.limit = {
+          limit: maxKeys,
+        };
+        sql = await renderChartConfig(
+          {
+            ...chartConfig,
+            // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
+            select: `DISTINCT lowCardinalityKeys(arrayJoin(${column}.keys)) as key`,
+          },
+          this,
+        );
+      } else {
+        sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
+          Identifier: column,
+        }}.keys)) as key
+        FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+        LIMIT ${{
+          Int32: maxKeys,
+        }}`;
+      }
     }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
@@ -354,12 +382,10 @@ export class Metadata {
     );
   }
 
-  async getAllFields({
-    databaseName,
-    tableName,
-    connectionId,
-    metricName,
-  }: TableConnection) {
+  async getAllFields(
+    { databaseName, tableName, connectionId, metricName }: TableConnection,
+    chartConfig?: ChartConfigWithDateRange,
+  ) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -385,6 +411,7 @@ export class Metadata {
           column: column.name,
           connectionId,
           metricName,
+          chartConfig,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -440,15 +467,17 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
   }) {
+    chartConfig.limit = {
+      limit: limit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `values.${JSON.stringify(chartConfig)}.${keys.join(',')}.${limit}${disableRowLimit}`,
       async () => {
         const sql = await renderChartConfig(
           {
             ...chartConfig,
-            select: keys
-              .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-              .join(', '),
+            // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
+            select: `DISTINCT ${keys.map((k, i) => `${k} AS param${i}`).join(', ')}`,
           },
           this,
         );
@@ -469,9 +498,24 @@ export class Metadata {
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
         // string[], sometimes it's { [key: string]: string; }
-        return Object.entries(json?.data?.[0]).map(([key, value]) => ({
-          key: keys[parseInt(key.replace('param', ''))],
-          value: (value as string[])?.filter(Boolean), // remove nulls
+        const groupedData: Record<string, string[]> = {};
+
+        for (const dataRow of Object.values(json?.data || [])) {
+          for (const [key, value] of Object.entries(dataRow)) {
+            const fieldKey = keys[parseInt(key.replace('param', ''))];
+            const fieldValue = value as string;
+
+            if (fieldValue !== '') {
+              if (!groupedData[fieldKey]) {
+                groupedData[fieldKey] = [];
+              }
+              groupedData[fieldKey].push(fieldValue);
+            }
+          }
+        }
+        return Object.entries(groupedData).map(([key, value]) => ({
+          key: key,
+          value: value,
         }));
       },
     );

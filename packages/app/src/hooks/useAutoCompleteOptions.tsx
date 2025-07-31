@@ -21,17 +21,57 @@ export function useAutoCompleteOptions(
   {
     tableConnections,
     additionalSuggestions,
+    dateRange,
+    timestampValueExpression,
   }: {
     tableConnections?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
+  // 判断是在搜索列名还是列值
+  // 如果最后一个 token 有 :，则在搜索列值。
+  // 否则是在搜索列名。
+  // 例如 kubernetes.pod.name:"service" level:abc 搜索列 level 的值
+  // 例如 kubernetes.pod.name:"service" lev 搜索包含列 lev 的列名
+  const tokens = value.split(' ');
+  const lastToken = tokens[tokens.length - 1];
+  const isSearchColumeValue = lastToken.endsWith(':');
+  // key 表示是哪个列要搜索列值
+  const key = lastToken.substring(0, lastToken.indexOf(':') + 1);
+
+  // 将搜索条件都放进 chartConfigs 中
+  const chartConfigsSearchColume: ChartConfigWithDateRange[] = toArray(
+    tableConnections,
+  ).map(({ databaseName, tableName, connectionId }) => ({
+    connection: connectionId,
+    from: {
+      databaseName,
+      tableName,
+    },
+    timestampValueExpression: timestampValueExpression,
+    select: '',
+    whereLanguage: 'lucene',
+    // 如果 value 是 a:b level:x 的形式，不是在搜索列名。
+    // 如果 value 是 a:b lev 的形式，将 a:b 作为搜索条件。
+    // TODO 目前只支持 mapKeys 的搜索，添加 keyname ilike '%lev%' 的搜索。
+    where: isSearchColumeValue ? '' : removeAfterLastSpace(value),
+    // 使用日志查询的时间范围获取 key,value
+    // fix https://github.com/hyperdxio/hyperdx/issues/974
+    dateRange: dateRange,
+  }));
+
   // Fetch and gather all field options
-  const { data: fields } = useAllFields(tableConnections ?? [], {
-    enabled:
-      !!tableConnections &&
-      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
-  });
+  const { data: fields } = useAllFields(
+    tableConnections ?? [],
+    {
+      enabled:
+        !!tableConnections &&
+        (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
+    },
+    chartConfigsSearchColume,
+  );
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 
@@ -60,18 +100,18 @@ export function useAutoCompleteOptions(
   const [searchField, setSearchField] = useState<Field | null>(null);
   // check if any search field matches
   useEffect(() => {
-    const v = fieldCompleteMap.get(value);
+    const v = fieldCompleteMap.get(key);
     if (v) {
       setSearchField(v);
     }
-  }, [fieldCompleteMap, value]);
+  }, [fieldCompleteMap, key]);
   // clear search field if no key matches anymore
   useEffect(() => {
     if (!searchField) return;
-    if (!value.startsWith(formatter.formatFieldValue(searchField))) {
+    if (!key.startsWith(formatter.formatFieldValue(searchField))) {
       setSearchField(null);
     }
-  }, [searchField, setSearchField, value, formatter]);
+  }, [searchField, setSearchField, key, formatter]);
   const searchKeys = useMemo(
     () =>
       searchField
@@ -85,7 +125,7 @@ export function useAutoCompleteOptions(
   );
 
   // hooks to get key values
-  const chartConfigs: ChartConfigWithDateRange[] = toArray(
+  const chartConfigsSearchColumeValue: ChartConfigWithDateRange[] = toArray(
     tableConnections,
   ).map(({ databaseName, tableName, connectionId }) => ({
     connection: connectionId,
@@ -93,19 +133,20 @@ export function useAutoCompleteOptions(
       databaseName,
       tableName,
     },
-    timestampValueExpression: '',
+    timestampValueExpression: timestampValueExpression,
     select: '',
-    where: '',
-    // TODO: Pull in date for query as arg
-    // just assuming 1/2 day is okay to query over right now
-    dateRange: [
-      new Date(Date.now() - (86400 * 1000) / 2),
-      new Date(Date.now()),
-    ],
+    whereLanguage: 'lucene',
+    // 如果 value 是 a:b level: 的形式，将 a:b 作为搜索条件。
+    // 如果 value 是 a:b level:c 的形式，将 value 作为搜索条件。
+    where: value?.endsWith(':') ? removeAfterLastSpace(value) : value,
+    // 使用日志查询的时间范围获取 key,value
+    // fix https://github.com/hyperdxio/hyperdx/issues/974
+    dateRange: dateRange,
   }));
   const { data: keyVals } = useGetKeyValues({
-    chartConfigs,
+    chartConfigs: chartConfigsSearchColumeValue,
     keys: searchKeys,
+    limit: 10, // 避免使用默认的 20 个 limit，因为 suggestion 下拉框只展示十个。
   });
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
@@ -165,4 +206,12 @@ export function useAutoCompleteOptions(
   return useMemo(() => {
     return deduplicate2dArray([fieldCompleteOptions, keyValCompleteOptions]);
   }, [fieldCompleteOptions, keyValCompleteOptions]);
+}
+
+function removeAfterLastSpace(value: string): string {
+  const lastSpaceIndex = value.lastIndexOf(' ');
+  if (lastSpaceIndex === -1) {
+    return ''; // 没有空格，返回整个字符串
+  }
+  return value.substring(0, value.lastIndexOf(' '));
 }
