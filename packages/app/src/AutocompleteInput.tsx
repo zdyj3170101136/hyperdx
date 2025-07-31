@@ -100,11 +100,17 @@ export default function AutocompleteInput({
   const suggestedProperties = useMemo(() => {
     const tokens = debouncedValue.split(' ');
     const lastToken = tokens[tokens.length - 1];
-
-    if (lastToken.length === 0 && showSuggestionsOnEmpty) {
+    // 如果 lastToken 为 ServiceName:test
+    // 表示在搜索字段 ServiceName 中包含 test 的值
+    // 此时 keyValCompleteOptions 格式为 ServiceName:"test0"
+    // 为了使 fuse 能够搜索到，使用 ServiceName:"test 进行匹配。
+    const key = lastToken.includes(':')
+      ? lastToken.substring(0, lastToken.indexOf(':') + 1) + '"'
+      : lastToken;
+    if (key.length === 0 && showSuggestionsOnEmpty) {
       return autocompleteOptions ?? [];
     }
-    return fuse.search(lastToken).map(result => result.item);
+    return fuse.search(key).map(result => result.item);
   }, [debouncedValue, fuse, autocompleteOptions, showSuggestionsOnEmpty]);
 
   const onSelectSearchHistory = (query: string) => {

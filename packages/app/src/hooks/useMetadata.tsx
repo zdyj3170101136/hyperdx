@@ -44,19 +44,28 @@ export function useColumns(
 export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
+  chartConfigs?: ChartConfigWithDateRange | ChartConfigWithDateRange[],
 ) {
   const tableConnections = Array.isArray(_tableConnections)
     ? _tableConnections
     : [_tableConnections];
   const metadata = getMetadata();
+  const chartConfigsArr = toArray(chartConfigs);
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
+      ...chartConfigsArr.map(cc => ({ ...cc })),
     ],
     queryFn: async () => {
       const fields2d = await Promise.all(
-        tableConnections.map(tc => metadata.getAllFields(tc)),
+        tableConnections.map((tc, index) => {
+          if (chartConfigs == undefined) {
+            return metadata.getAllFields(tc);
+          }
+
+          return metadata.getAllFields(tc, chartConfigsArr[index]);
+        }),
       );
 
       // skip deduplication if not needed

@@ -13,13 +13,15 @@ import {
 
 export class LuceneLanguageFormatter implements ILanguageFormatter {
   formatFieldValue(f: Field): string {
-    return f.path.join('.');
+    // 在给用户展示推荐的列名的时候，使用 key: 的形式而不是 key.
+    // 这样可以避免用户手动输入 :
+    return f.path.join('.') + ':';
   }
   formatFieldLabel(f: Field): string {
-    return `${f.path.join('.')} (${f.jsType})`;
+    return `${f.path.join('.') + ':'} (${f.jsType})`;
   }
   formatKeyValPair(key: string, value: string): string {
-    return `${key}:"${value}"`;
+    return `${key}"${value}"`;
   }
 }
 
@@ -35,6 +37,8 @@ export default function SearchInputV2({
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  dateRange,
+  timestampValueExpression,
   ...props
 }: {
   tableConnections?: TableConnection | TableConnection[];
@@ -47,6 +51,8 @@ export default function SearchInputV2({
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  dateRange?: [Date, Date];
+  timestampValueExpression?: string;
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -61,6 +67,8 @@ export default function SearchInputV2({
     {
       tableConnections,
       additionalSuggestions,
+      dateRange,
+      timestampValueExpression,
     },
   );
 
@@ -95,6 +103,7 @@ export default function SearchInputV2({
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      showSuggestionsOnEmpty={true} //输入为空时也展示推荐的值
       aboveSuggestions={
         <>
           <div className="text-muted fs-8 fw-bold me-1">Searching for:</div>
