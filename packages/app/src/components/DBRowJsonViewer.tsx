@@ -8,6 +8,7 @@ import {
   ActionIcon,
   Box,
   Button,
+  Flex,
   Group,
   Input,
   Menu,
@@ -204,9 +205,11 @@ function removeSqlField(
 export function DBRowJsonViewer({
   data,
   jsonColumns = [],
+  compact = false,
 }: {
   data: any;
   jsonColumns?: string[];
+  compact?: boolean;
 }) {
   const {
     onPropertyAddClick,
@@ -253,6 +256,15 @@ export function DBRowJsonViewer({
         }
       }
 
+      let luceneFieldPath = '';
+      if (compact) {
+        // 对于扁平化的 resourceAttributes，使用 ResourceAttributes['fieldName'] 格式
+        fieldPath = `ResourceAttributes['${keyPath}']`;
+        luceneFieldPath = `ResourceAttributes.${keyPath}`;
+      } else {
+        luceneFieldPath = keyPath.join('.');
+      }
+
       let where = searchParams.get('where') || '';
       let whereLanguage = searchParams.get('whereLanguage');
       if (whereLanguage == '') {
@@ -271,11 +283,7 @@ export function DBRowJsonViewer({
             where += ' AND ';
           }
         } else {
-          removedFilterWhere = removeLuceneField(
-            where,
-            keyPath.join('.'),
-            value,
-          );
+          removedFilterWhere = removeLuceneField(where, luceneFieldPath, value);
           hadFilter = removedFilterWhere !== where;
           if (!hadFilter) {
             where += ' ';
@@ -310,7 +318,7 @@ export function DBRowJsonViewer({
           title: 'Add to Filters',
           onClick: () => {
             if (whereLanguage === 'lucene') {
-              where += `${keyPath.join('.')}:"${value}"`;
+              where += `${luceneFieldPath}:"${value}"`;
             } else {
               where += `${fieldPath} = ${
                 typeof value === 'string' ? `'${value}'` : value
@@ -339,7 +347,7 @@ export function DBRowJsonViewer({
           title: 'Exclude from Filters',
           onClick: () => {
             if (whereLanguage === 'lucene') {
-              where += `-${keyPath.join('.')}:"${value}"`;
+              where += `-${luceneFieldPath}:"${value}"`;
             } else {
               where += `${fieldPath} != ${
                 typeof value === 'string' ? `'${value}'` : value
@@ -369,7 +377,7 @@ export function DBRowJsonViewer({
           onClick: () => {
             where = '';
             if (whereLanguage === 'lucene') {
-              where = `${keyPath.join('.')}:"${value}"`;
+              where = `${luceneFieldPath}:"${value}"`;
             } else {
               where = `${fieldPath} = ${
                 typeof value === 'string' ? `'${value}'` : value
@@ -474,17 +482,89 @@ export function DBRowJsonViewer({
       return actions;
     },
     [
-      displayedColumns,
-      generateChartUrl,
-      generateSearchUrl,
-      onPropertyAddClick,
-      rowData,
-      toggleColumn,
       jsonColumns,
+      searchParams,
+      generateSearchUrl,
+      generateChartUrl,
+      toggleColumn,
+      displayedColumns,
+      rowData,
     ],
   );
 
   const jsonOptions = useAtomValue(viewerOptionsAtom);
+
+  // 紧凑模式：使用 Flex 布局显示扁平化的键值对
+  const flattenedData = useMemo(() => {
+    if (!compact || !rowData || typeof rowData !== 'object') return [];
+
+    const result: Array<{ key: string; value: any; keyPath: string[] }> = [];
+
+    const flattenObject = (obj: any, prefix: string[] = []) => {
+      for (const [key, value] of Object.entries(obj)) {
+        const currentPath = [...prefix, key];
+        if (
+          value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+        ) {
+          flattenObject(value, currentPath);
+        } else {
+          result.push({
+            key,
+            value,
+            keyPath: currentPath,
+          });
+        }
+      }
+    };
+
+    flattenObject(rowData);
+    return result;
+  }, [compact, rowData]);
+
+  if (compact) {
+    return (
+      <div className="flex-grow-1 bg-body overflow-auto">
+        <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+          {flattenedData.map(({ key, value, keyPath }) => {
+            const actions = getLineActions({ keyPath, value, key });
+            const hasActions = actions.length > 0;
+
+            return (
+              <Menu
+                key={`${keyPath.join('.')}-${value}`}
+                position="bottom-start"
+                withinPortal={false}
+              >
+                <Menu.Target>
+                  <div
+                    className={`text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 ${
+                      hasActions ? 'cursor-pointer' : ''
+                    }`}
+                  >
+                    {key}: {String(value)}
+                  </div>
+                </Menu.Target>
+                {hasActions && (
+                  <Menu.Dropdown>
+                    {actions.map(action => (
+                      <Menu.Item
+                        key={action.key}
+                        leftSection={action.label}
+                        onClick={action.onClick}
+                      >
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                )}
+              </Menu>
+            );
+          })}
+        </Flex>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
