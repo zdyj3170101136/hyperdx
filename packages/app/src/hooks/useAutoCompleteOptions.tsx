@@ -21,8 +21,10 @@ export function useAutoCompleteOptions(
   {
     tableConnections,
     additionalSuggestions,
-    dateRange,
-    timestampValueExpression,
+    // 此处默认传一个值，仅是为了符合 ChartConfigWithDateRange 的类型
+    // 实际上不会被用到
+    dateRange = [new Date('2024-01-01'), new Date('2024-12-31')],
+    timestampValueExpression = '',
   }: {
     tableConnections?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];

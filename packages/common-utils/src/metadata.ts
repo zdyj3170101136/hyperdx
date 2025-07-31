@@ -9,7 +9,12 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+  TSource,
+} from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -255,7 +260,7 @@ export class Metadata {
       if (chartConfig) {
         sql = await renderChartConfig(
           {
-            ...chartConfig,
+            ...convertToChartConfigWithOptDateRange(chartConfig),
             // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
             select: `groupUniqArrayArray(${maxKeys})(${column}) as keysArr`,
           },
@@ -475,7 +480,7 @@ export class Metadata {
       async () => {
         const sql = await renderChartConfig(
           {
-            ...chartConfig,
+            ...convertToChartConfigWithOptDateRange(chartConfig),
             // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
             select: `DISTINCT ${keys.map((k, i) => `${k} AS param${i}`).join(', ')}`,
           },
@@ -557,3 +562,19 @@ const __LOCAL_CACHE__ = new MetadataCache();
 // also the client should be able to choose the cache strategy
 export const getMetadata = (clickhouseClient: ClickhouseClient) =>
   new Metadata(clickhouseClient, __LOCAL_CACHE__);
+
+// 如果 timestampValueExpression 为空，则设置 timestampValueExpression 为 undefined
+// 这样 ChartConfigWithOptDateRange 就不会使用时间戳筛选条件
+function convertToChartConfigWithOptDateRange(
+  chartConfig: ChartConfigWithDateRange,
+): ChartConfigWithOptDateRange {
+  // 直接返回所有值，保持所有属性
+  const result: ChartConfigWithOptDateRange = {
+    ...chartConfig,
+  };
+  if (chartConfig.timestampValueExpression == '') {
+    result.timestampValueExpression = undefined;
+    result.dateRange = undefined;
+  }
+  return result;
+}
