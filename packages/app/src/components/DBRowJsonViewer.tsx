@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -122,6 +123,84 @@ function HyperJsonMenu() {
   );
 }
 
+// removeLuceneField('a:x -b:y c:z', "b", "y")  // 返回 'a:x c:z'
+// removeLuceneField('a:"x" -a:x', "a", "x")    // 返回 'a:"x"'
+// removeLuceneField("  a:x -b:y  ", "c", "z")  // 原样返回，因为 c 不存在
+function removeLuceneField(
+  query: string,
+  key: string,
+  valueToRemove: string,
+): string {
+  if (typeof query !== 'string') return query;
+
+  const regex = new RegExp(
+    `(^|\\s)(-?)${escapeRegExp(key)}:(["']?)${escapeRegExp(valueToRemove)}\\3(?=\\s|$)`,
+    'i',
+  );
+
+  // 直接替换，未匹配时replace()会自动返回原字符串
+  const result = query.replace(
+    regex,
+    (match, leadingSpace) => leadingSpace || '',
+  );
+
+  return result; // 天然满足"未匹配时原样返回"
+}
+
+// 辅助函数：转义正则特殊字符
+function escapeRegExp(str: string): string {
+  if (typeof str !== 'string') {
+    return String(str);
+  }
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+//console.log(removeSqlField("name = 'Alice' OR name != 'Bob' AND age = 25", 'name', "'Bob'"));
+// 输出: "name = 'Alice' AND age = 25" （仅删除 name != 'Bob'）
+//console.log(removeSqlField("  name = 'Alice'   AND   AND   age = 25  ", 'name', "'Charlie'"));
+// 输出: "  name = 'Alice'   AND   AND   age = 25  " （未匹配，原样返回）
+function removeSqlField(
+  sqlWhere: string,
+  key: string,
+  valueToRemove: string,
+): string {
+  if (!sqlWhere || typeof sqlWhere !== 'string') return '';
+  if (typeof key !== 'string' || typeof valueToRemove !== 'string')
+    return sqlWhere;
+
+  // 转义正则特殊字符
+  const escapedValue = escapeRegExp(valueToRemove);
+
+  // 构建正则表达式，支持 = 和 !=
+  const exactMatchRegex = new RegExp(
+    `(?:\\b(AND|OR)\\s+)?\\b${escapeRegExp(key)}\\s*(!?=)\\s*('${escapedValue}'|"${escapedValue}"|\\b${escapedValue}\\b)(?=(\\s+(?:AND|OR)|\\s*$))`,
+    'gi',
+  );
+
+  // 检查是否存在匹配项
+  if (!exactMatchRegex.test(sqlWhere)) {
+    return sqlWhere; // 未找到匹配，原样返回
+  }
+
+  // 执行替换（保留操作符前的逻辑运算符 AND/OR）
+  let result = sqlWhere.replace(
+    exactMatchRegex,
+    (match, logicOp, operator, value) => {
+      // 如果匹配到的是 AND/OR，保留它（避免破坏 SQL 结构）
+      return logicOp ? '' : '';
+    },
+  );
+
+  // 清理残留的逻辑运算符
+  result = result
+    .replace(/^\s*(AND|OR)\s*/i, '') // 开头的 AND/OR
+    .replace(/\s*(AND|OR)\s*$/i, '') // 结尾的 AND/OR
+    .replace(/\s+(AND|OR)\s+(AND|OR)\s+/gi, ' $1 ') // 连续的 AND/OR
+    .trim();
+
+  return result || '';
+}
+
 export function DBRowJsonViewer({
   data,
   jsonColumns = [],
@@ -155,6 +234,8 @@ export function DBRowJsonViewer({
     return filterObjectRecursively(data, debouncedFilter);
   }, [data, debouncedFilter]);
 
+  const searchParams = useSearchParams();
+
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
@@ -172,60 +253,133 @@ export function DBRowJsonViewer({
         }
       }
 
-      // Add to Filters action (strings only)
-      // FIXME: TOTAL HACK To disallow adding timestamp to filters
-      if (
-        onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
-        fieldPath != 'Timestamp' &&
-        fieldPath != 'TimestampTime'
-      ) {
+      let where = searchParams.get('where') || '';
+      let whereLanguage = searchParams.get('whereLanguage');
+      if (whereLanguage == '') {
+        // 默认是 lucene
+        whereLanguage = 'lucene';
+      }
+
+      let removedFilterWhere = ''; // 已经移除过 filter 的 where
+      let hadFilter = false;
+      if (where !== '') {
+        // 如果已经有了 where，判断是否已经有了对应的 filter，如果没有，则添加连接符
+        if (whereLanguage === 'sql') {
+          removedFilterWhere = removeSqlField(where, fieldPath, value);
+          hadFilter = removedFilterWhere !== where;
+          if (!hadFilter) {
+            where += ' AND ';
+          }
+        } else {
+          removedFilterWhere = removeLuceneField(
+            where,
+            keyPath.join('.'),
+            value,
+          );
+          hadFilter = removedFilterWhere !== where;
+          if (!hadFilter) {
+            where += ' ';
+          }
+        }
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && hadFilter) {
         actions.push({
-          key: 'add-to-search',
-          label: (
-            <>
-              <i className="bi bi-funnel-fill me-1" />
-              Add to Filters
-            </>
-          ),
-          title: 'Add to Filters',
+          key: 'remove-filter',
+          label: 'Remove Filter',
           onClick: () => {
-            onPropertyAddClick(
-              isJsonColumn ? `toString(${fieldPath})` : fieldPath,
-              value,
+            router.push(
+              generateSearchUrl({
+                where: removedFilterWhere,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
             );
-            notifications.show({
-              color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
-            });
           },
         });
       }
 
-      if (generateSearchUrl && typeof value !== 'object') {
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
         actions.push({
-          key: 'search',
+          key: 'filter',
           label: (
             <>
               <i className="bi bi-search me-1" />
-              Search
+              Filter
+            </>
+          ),
+          title: 'Add to Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `${keyPath.join('.')}:"${value}"`;
+            } else {
+              where += `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'exclude',
+          label: (
+            <>
+              <i className="bi bi-search me-1" />
+              Exclude
+            </>
+          ),
+          title: 'Exclude from Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `-${keyPath.join('.')}:"${value}"`;
+            } else {
+              where += `${fieldPath} != ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'replace-filter',
+          label: (
+            <>
+              <i className="bi bi-search me-1" />
+              Replace Filter
             </>
           ),
           title: 'Search for this value only',
           onClick: () => {
-            let defaultWhere = `${fieldPath} = ${
-              typeof value === 'string' ? `'${value}'` : value
-            }`;
-
-            // FIXME: TOTAL HACK
-            if (fieldPath == 'Timestamp' || fieldPath == 'TimestampTime') {
-              defaultWhere = `${fieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+            where = '';
+            if (whereLanguage === 'lucene') {
+              where = `${keyPath.join('.')}:"${value}"`;
+            } else {
+              where = `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
             }
+
             router.push(
               generateSearchUrl({
-                where: defaultWhere,
-                whereLanguage: 'sql',
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
               }),
             );
           },
