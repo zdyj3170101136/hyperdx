@@ -568,8 +568,7 @@ export function DBRowJsonViewer({
                         key={action.key}
                         leftSection={action.label}
                         onClick={action.onClick}
-                      >
-                      </Menu.Item>
+                      ></Menu.Item>
                     ))}
                   </Menu.Dropdown>
                 )}
