@@ -279,7 +279,7 @@ export class Metadata {
         };
         sql = await renderChartConfig(
           {
-            ...chartConfig,
+            ...convertToChartConfigWithOptDateRange(chartConfig),
             // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
             select: `DISTINCT lowCardinalityKeys(arrayJoin(${column}.keys)) as key`,
           },

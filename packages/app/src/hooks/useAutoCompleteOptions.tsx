@@ -62,6 +62,7 @@ export function useAutoCompleteOptions(
     // 使用日志查询的时间范围获取 key,value
     // fix https://github.com/hyperdxio/hyperdx/issues/974
     dateRange: dateRange,
+    implicitColumnExpression: 'Body',
   }));
 
   // Fetch and gather all field options
@@ -144,6 +145,7 @@ export function useAutoCompleteOptions(
     // 使用日志查询的时间范围获取 key,value
     // fix https://github.com/hyperdxio/hyperdx/issues/974
     dateRange: dateRange,
+    implicitColumnExpression: 'Body',
   }));
   const { data: keyVals } = useGetKeyValues({
     chartConfigs: chartConfigsSearchColumeValue,
