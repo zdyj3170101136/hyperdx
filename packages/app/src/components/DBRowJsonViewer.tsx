@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -7,6 +8,7 @@ import {
   ActionIcon,
   Box,
   Button,
+  Flex,
   Group,
   Input,
   Menu,
@@ -122,12 +124,92 @@ function HyperJsonMenu() {
   );
 }
 
+// removeLuceneField('a:x -b:y c:z', "b", "y")  // 返回 'a:x c:z'
+// removeLuceneField('a:"x" -a:x', "a", "x")    // 返回 'a:"x"'
+// removeLuceneField("  a:x -b:y  ", "c", "z")  // 原样返回，因为 c 不存在
+function removeLuceneField(
+  query: string,
+  key: string,
+  valueToRemove: string,
+): string {
+  if (typeof query !== 'string') return query;
+
+  const regex = new RegExp(
+    `(^|\\s)(-?)${escapeRegExp(key)}:(["']?)${escapeRegExp(valueToRemove)}\\3(?=\\s|$)`,
+    'i',
+  );
+
+  // 直接替换，未匹配时replace()会自动返回原字符串
+  const result = query.replace(
+    regex,
+    (match, leadingSpace) => leadingSpace || '',
+  );
+
+  return result; // 天然满足"未匹配时原样返回"
+}
+
+// 辅助函数：转义正则特殊字符
+function escapeRegExp(str: string): string {
+  if (typeof str !== 'string') {
+    return String(str);
+  }
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+//console.log(removeSqlField("name = 'Alice' OR name != 'Bob' AND age = 25", 'name', "'Bob'"));
+// 输出: "name = 'Alice' AND age = 25" （仅删除 name != 'Bob'）
+//console.log(removeSqlField("  name = 'Alice'   AND   AND   age = 25  ", 'name', "'Charlie'"));
+// 输出: "  name = 'Alice'   AND   AND   age = 25  " （未匹配，原样返回）
+function removeSqlField(
+  sqlWhere: string,
+  key: string,
+  valueToRemove: string,
+): string {
+  if (!sqlWhere || typeof sqlWhere !== 'string') return '';
+  if (typeof key !== 'string' || typeof valueToRemove !== 'string')
+    return sqlWhere;
+
+  // 转义正则特殊字符
+  const escapedValue = escapeRegExp(valueToRemove);
+
+  // 构建正则表达式，支持 = 和 !=
+  const exactMatchRegex = new RegExp(
+    `(?:\\b(AND|OR)\\s+)?\\b${escapeRegExp(key)}\\s*(!?=)\\s*('${escapedValue}'|"${escapedValue}"|\\b${escapedValue}\\b)(?=(\\s+(?:AND|OR)|\\s*$))`,
+    'gi',
+  );
+
+  // 检查是否存在匹配项
+  if (!exactMatchRegex.test(sqlWhere)) {
+    return sqlWhere; // 未找到匹配，原样返回
+  }
+
+  // 执行替换（保留操作符前的逻辑运算符 AND/OR）
+  let result = sqlWhere.replace(
+    exactMatchRegex,
+    (match, logicOp, operator, value) => {
+      // 如果匹配到的是 AND/OR，保留它（避免破坏 SQL 结构）
+      return logicOp ? '' : '';
+    },
+  );
+
+  // 清理残留的逻辑运算符
+  result = result
+    .replace(/^\s*(AND|OR)\s*/i, '') // 开头的 AND/OR
+    .replace(/\s*(AND|OR)\s*$/i, '') // 结尾的 AND/OR
+    .replace(/\s+(AND|OR)\s+(AND|OR)\s+/gi, ' $1 ') // 连续的 AND/OR
+    .trim();
+
+  return result || '';
+}
+
 export function DBRowJsonViewer({
   data,
   jsonColumns = [],
+  compact = false,
 }: {
   data: any;
   jsonColumns?: string[];
+  compact?: boolean;
 }) {
   const {
     onPropertyAddClick,
@@ -155,6 +237,8 @@ export function DBRowJsonViewer({
     return filterObjectRecursively(data, debouncedFilter);
   }, [data, debouncedFilter]);
 
+  const searchParams = useSearchParams();
+
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
@@ -172,60 +256,143 @@ export function DBRowJsonViewer({
         }
       }
 
-      // Add to Filters action (strings only)
-      // FIXME: TOTAL HACK To disallow adding timestamp to filters
-      if (
-        onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
-        fieldPath != 'Timestamp' &&
-        fieldPath != 'TimestampTime'
-      ) {
+      let luceneFieldPath = '';
+      if (compact) {
+        // 对于扁平化的 resourceAttributes，使用 ResourceAttributes['fieldName'] 格式
+        fieldPath = `ResourceAttributes['${keyPath}']`;
+        luceneFieldPath = `ResourceAttributes.${keyPath}`;
+      } else {
+        luceneFieldPath = keyPath.join('.');
+      }
+
+      let where = searchParams.get('where') || '';
+      let whereLanguage = searchParams.get('whereLanguage');
+      if (whereLanguage == '') {
+        // 默认是 lucene
+        whereLanguage = 'lucene';
+      }
+
+      let removedFilterWhere = ''; // 已经移除过 filter 的 where
+      let hadFilter = false;
+      if (where !== '') {
+        // 如果已经有了 where，判断是否已经有了对应的 filter，如果没有，则添加连接符
+        if (whereLanguage === 'sql') {
+          removedFilterWhere = removeSqlField(where, fieldPath, value);
+          hadFilter = removedFilterWhere !== where;
+          if (!hadFilter) {
+            where += ' AND ';
+          }
+        } else {
+          removedFilterWhere = removeLuceneField(where, luceneFieldPath, value);
+          hadFilter = removedFilterWhere !== where;
+          if (!hadFilter) {
+            where += ' ';
+          }
+        }
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && hadFilter) {
         actions.push({
-          key: 'add-to-search',
+          key: 'remove-filter',
           label: (
             <>
-              <i className="bi bi-funnel-fill me-1" />
-              Add to Filters
+              <i className="bi bi-x-circle me-1" />
+              Remove Filter
             </>
           ),
-          title: 'Add to Filters',
           onClick: () => {
-            onPropertyAddClick(
-              isJsonColumn ? `toString(${fieldPath})` : fieldPath,
-              value,
+            router.push(
+              generateSearchUrl({
+                where: removedFilterWhere,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
             );
-            notifications.show({
-              color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
-            });
           },
         });
       }
 
-      if (generateSearchUrl && typeof value !== 'object') {
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
         actions.push({
-          key: 'search',
+          key: 'filter',
           label: (
             <>
               <i className="bi bi-search me-1" />
-              Search
+              Filter
+            </>
+          ),
+          title: 'Add to Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `${luceneFieldPath}:"${value}"`;
+            } else {
+              where += `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'exclude',
+          label: (
+            <>
+              <i className="bi bi-dash-circle me-1" />
+              Exclude
+            </>
+          ),
+          title: 'Exclude from Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `-${luceneFieldPath}:"${value}"`;
+            } else {
+              where += `${fieldPath} != ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'replace-filter',
+          label: (
+            <>
+              <i className="bi bi-arrow-counterclockwise me-1" />
+              Replace Filter
             </>
           ),
           title: 'Search for this value only',
           onClick: () => {
-            let defaultWhere = `${fieldPath} = ${
-              typeof value === 'string' ? `'${value}'` : value
-            }`;
-
-            // FIXME: TOTAL HACK
-            if (fieldPath == 'Timestamp' || fieldPath == 'TimestampTime') {
-              defaultWhere = `${fieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+            where = '';
+            if (whereLanguage === 'lucene') {
+              where = `${luceneFieldPath}:"${value}"`;
+            } else {
+              where = `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
             }
+
             router.push(
               generateSearchUrl({
-                where: defaultWhere,
-                whereLanguage: 'sql',
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
               }),
             );
           },
@@ -296,13 +463,23 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: (
+            <>
+              <i className="bi bi-clipboard me-1" />
+              Copy Object
+            </>
+          ),
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: 'Copy Value',
+          label: (
+            <>
+              <i className="bi bi-copy me-1" />
+              Copy Value
+            </>
+          ),
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
@@ -320,17 +497,88 @@ export function DBRowJsonViewer({
       return actions;
     },
     [
-      displayedColumns,
-      generateChartUrl,
-      generateSearchUrl,
-      onPropertyAddClick,
-      rowData,
-      toggleColumn,
       jsonColumns,
+      searchParams,
+      generateSearchUrl,
+      generateChartUrl,
+      toggleColumn,
+      displayedColumns,
+      rowData,
     ],
   );
 
   const jsonOptions = useAtomValue(viewerOptionsAtom);
+
+  // 紧凑模式：使用 Flex 布局显示扁平化的键值对
+  const flattenedData = useMemo(() => {
+    if (!compact || !rowData || typeof rowData !== 'object') return [];
+
+    const result: Array<{ key: string; value: any; keyPath: string[] }> = [];
+
+    const flattenObject = (obj: any, prefix: string[] = []) => {
+      for (const [key, value] of Object.entries(obj)) {
+        const currentPath = [...prefix, key];
+        if (
+          value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+        ) {
+          flattenObject(value, currentPath);
+        } else {
+          result.push({
+            key,
+            value,
+            keyPath: currentPath,
+          });
+        }
+      }
+    };
+
+    flattenObject(rowData);
+    return result;
+  }, [compact, rowData]);
+
+  if (compact) {
+    return (
+      <div className="flex-grow-1 bg-body overflow-auto">
+        <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+          {flattenedData.map(({ key, value, keyPath }) => {
+            const actions = getLineActions({ keyPath, value, key });
+            const hasActions = actions.length > 0;
+
+            return (
+              <Menu
+                key={`${keyPath.join('.')}-${value}`}
+                position="bottom-start"
+                withinPortal={false}
+              >
+                <Menu.Target>
+                  <div
+                    className={`text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 ${
+                      hasActions ? 'cursor-pointer' : ''
+                    }`}
+                  >
+                    {key}: {String(value)}
+                  </div>
+                </Menu.Target>
+                {hasActions && (
+                  <Menu.Dropdown>
+                    {actions.map(action => (
+                      <Menu.Item
+                        key={action.key}
+                        leftSection={action.label}
+                        onClick={action.onClick}
+                      ></Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                )}
+              </Menu>
+            );
+          })}
+        </Flex>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">

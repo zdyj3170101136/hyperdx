@@ -287,20 +287,13 @@ export function RowOverviewPanel({
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
-              {Object.entries(resourceAttributes).map(([key, value]) => (
-                <EventTag
-                  onPropertyAddClick={onPropertyAddClick!}
-                  generateSearchUrl={_generateSearchUrl}
-                  displayedKey={key}
-                  // TODO: Escape properly
-                  sqlExpression={`${source.resourceAttributesExpression}['${key}']`}
-                  name={`${source.resourceAttributesExpression}.${key}`}
-                  value={value as string}
-                  key={key}
-                />
-              ))}
-            </Flex>
+            <Box px="md">
+              <DBRowJsonViewer
+                data={resourceAttributes}
+                jsonColumns={[]}
+                compact={true}
+              />
+            </Box>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
