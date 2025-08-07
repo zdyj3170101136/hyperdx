@@ -377,6 +377,28 @@ function useLiveUpdate({
   pause: boolean;
 }) {
   const intervalRef = useRef<number | null>(null);
+  const [isPause, setIsPause] = useState(false);
+  useEffect(() => {
+    // 监听标签页切换
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        setIsPause(true);
+        console.log('页面隐藏-停止');
+      } else {
+        setIsPause(false);
+      }
+    });
+    return () => {
+  
+      document.removeEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          setIsPause(true);
+        } else {
+          setIsPause(false);
+        }
+      });
+    };
+  }, []);
   useEffect(() => {
     if (isLive) {
       if (intervalRef.current) {
@@ -386,6 +408,9 @@ function useLiveUpdate({
       // only start interval if no queries are fetching
       if (!pause) {
         intervalRef.current = window.setInterval(() => {
+          if (isPause) {
+            return;
+          }
           onTimeRangeSelect(
             new Date(Date.now() - interval),
             new Date(),
@@ -403,7 +428,7 @@ function useLiveUpdate({
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [isLive, onTimeRangeSelect, pause, interval, refreshFrequency]);
+  }, [isLive, onTimeRangeSelect, pause, interval, refreshFrequency, isPause]);
 }
 
 function useSearchedConfigToChartConfig({
