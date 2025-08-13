@@ -207,6 +207,7 @@ export type StacktraceBreadcrumb = {
 export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
+  Alertmanager = 'alertmanager',
 }
 
 // -------------------------
@@ -249,6 +250,7 @@ export type AlertChannelType = z.infer<typeof zAlertChannelType>;
 export const zAlertChannel = z.object({
   type: zAlertChannelType,
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
+  labels: z.record(z.string(), z.string()),
 });
 
 export const zSavedSearchAlert = z.object({

@@ -119,5 +119,9 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   channel: {
     type: 'webhook',
     webhookId: '',
+    labels: {
+      alert_type: 'hyperdx',
+      alertname: '$alertname',
+    },
   },
 };

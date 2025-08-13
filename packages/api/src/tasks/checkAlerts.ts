@@ -169,6 +169,7 @@ export const notifyChannel = async ({
   id,
   message,
   team,
+  labels,
 }: {
   channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
   id: string;
@@ -176,10 +177,14 @@ export const notifyChannel = async ({
     hdxLink: string;
     title: string;
     body: string;
+    alertname: string;
+    alertStartsAt: Date;
+    alertEndsAt: Date;
   };
   team: {
     id: string;
   };
+  labels: Record<string, string>;
 }) => {
   switch (channel) {
     case 'webhook': {
@@ -194,10 +199,15 @@ export const notifyChannel = async ({
             }),
       });
 
+      if (!webhook) {
+        throw new Error('Webhook not found');
+      }
       if (webhook?.service === 'slack') {
         await handleSendSlackWebhook(webhook, message);
       } else if (webhook?.service === 'generic') {
         await handleSendGenericWebhook(webhook, message);
+      } else if (webhook?.service === 'alertmanager') {
+        await handleSendAlertManagerWebhook(webhook, message, labels);
       }
       break;
     }
@@ -230,6 +240,69 @@ const handleSendSlackWebhook = async (
       },
     ],
   });
+};
+
+const handleSendAlertManagerWebhook = async (
+  webhook: IWebhook,
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+    alertname: string;
+    alertStartsAt: Date;
+    alertEndsAt: Date;
+  },
+  labels: Record<string, string>,
+) => {
+  if (!webhook.url) {
+    throw new Error('Webhook URL is not set');
+  }
+
+  // AlertManager 格式的告警信息
+  // see https://prometheus.io/docs/alerting/latest/clients/
+
+  // 处理 labels，如果 value 为 "$alertname" 则替换为实际的 alertname
+  const processedLabels = Object.fromEntries(
+    Object.entries(labels).map(([key, value]) => [
+      key,
+      value === '$alertname' ? message.alertname : value,
+    ]),
+  );
+
+  const alertManagerPayload = [
+    {
+      labels: processedLabels,
+      startsAt: message.alertStartsAt.toISOString(),
+      endsAt: message.alertEndsAt.toISOString(),
+      annotations: {
+        body: message.body,
+        hdx_link: message.hdxLink,
+      },
+    },
+  ];
+
+  try {
+    const response = await fetch(webhook.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(alertManagerPayload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `AlertManager webhook failed: ${response.status} ${errorText}`,
+      );
+    }
+  } catch (error) {
+    logger.error({
+      message: 'Failed to send AlertManager webhook',
+      error: serializeError(error),
+    });
+    return;
+  }
 };
 
 export const escapeJsonString = (str: string) => {
@@ -411,6 +484,9 @@ export const renderAlertTemplate = async ({
   title,
   view,
   team,
+  alertStartsAt,
+  alertEndsAt,
+  labels,
 }: {
   clickhouseClient: clickhouse.ClickhouseClient;
   metadata: Metadata;
@@ -420,6 +496,9 @@ export const renderAlertTemplate = async ({
   team: {
     id: string;
   };
+  alertStartsAt: Date;
+  alertEndsAt: Date;
+  labels: Record<string, string>;
 }) => {
   const {
     alert,
@@ -474,6 +553,10 @@ export const renderAlertTemplate = async ({
         // render body template
         const renderedBody = _hb.compile(rawTemplateBody)(view);
 
+        if (!savedSearch) {
+          throw new Error('SavedSearch not found');
+        }
+
         await notifyChannel({
           channel,
           id: renderedId,
@@ -481,8 +564,12 @@ export const renderAlertTemplate = async ({
             hdxLink: buildAlertMessageTemplateHdxLink(view),
             title,
             body: renderedBody,
+            alertname: savedSearch.name,
+            alertStartsAt,
+            alertEndsAt,
           },
           team,
+          labels,
         });
       },
     );
@@ -584,8 +671,7 @@ export const renderAlertTemplate = async ({
       });
     }
 
-    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} log events found, expected ${
+    rawTemplateBody = `${value} log events found, expected ${
       alert.thresholdType === AlertThresholdType.ABOVE
         ? 'less than'
         : 'greater than'
@@ -598,8 +684,7 @@ ${truncatedResults}
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
-    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} ${
+    rawTemplateBody = `${value} ${
       doesExceedThreshold(alert.thresholdType, alert.threshold, value)
         ? alert.thresholdType === AlertThresholdType.ABOVE
           ? 'exceeds'
@@ -635,6 +720,8 @@ const fireChannelEvent = async ({
   startTime,
   totalCount,
   windowSizeInMins,
+  alertStartsAt,
+  alertEndsAt,
 }: {
   alert: EnhancedAlert;
   attributes: Record<string, string>; // TODO: support other types than string
@@ -648,6 +735,8 @@ const fireChannelEvent = async ({
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
+  alertStartsAt: Date;
+  alertEndsAt: Date;
 }) => {
   const team = alert.team;
   if (team == null) {
@@ -702,6 +791,9 @@ const fireChannelEvent = async ({
     team: {
       id: team._id.toString(),
     },
+    alertStartsAt,
+    alertEndsAt,
+    labels: (alert.channel as any)?.labels,
   });
 };
 
@@ -974,6 +1066,15 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
+              // 参照 grafana，recover 或者 firing 应当发送通知
+              // firing:
+              //  - alertStartsAt now
+              //  - alertEndsAt now + 4 * interval, see // https://github.com/prometheus/prometheus/blob/6a9b3263ffdba5ea8c23e6f9ef69fb7a15b566f8/rules/alerting.go#L493
+              // recover:
+              //  - alertStartsAt == alertEndsAt
+              // TODO SEND RECOVERED
+              alertStartsAt: now,
+              alertEndsAt: fns.addMinutes(now, 2 * windowSizeInMins),
             });
           } catch (e) {
             logger.error({

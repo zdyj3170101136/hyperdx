@@ -1,10 +1,20 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Control, useController } from 'react-hook-form';
 import { Select, SelectProps } from 'react-hook-form-mantine';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import type { AlertChannelType } from '@hyperdx/common-utils/dist/types';
-import { Button, ComboboxData, Group, Modal } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  ComboboxData,
+  Group,
+  Modal,
+  Stack,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 
 import api from '@/api';
 
@@ -21,6 +31,7 @@ const WebhookChannelForm = <T extends object>(
   const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
     'slack',
     'generic',
+    'alertmanager',
   ]);
   const [opened, { open, close }] = useDisclosure(false);
 
@@ -105,14 +116,129 @@ export const AlertChannelForm = ({
 }) => {
   if (type === 'webhook') {
     return (
-      <WebhookChannelForm
-        control={control}
-        name={`${namePrefix}channel.webhookId`}
-      />
+      <Stack gap="xs">
+        <WebhookChannelForm
+          control={control}
+          name={`${namePrefix}channel.webhookId`}
+        />
+        <LabelsInput control={control} namePrefix={namePrefix} />
+      </Stack>
     );
   }
 
   return null;
+};
+
+const LabelsInput = ({
+  control,
+  namePrefix = '',
+}: {
+  control: Control<any>;
+  namePrefix?: string;
+}) => {
+  const { field } = useController({
+    name: `${namePrefix}channel.labels`,
+    control,
+  });
+
+  type Label = { key: string; value: string };
+
+  const [labels, setLabels] = useState<Label[]>(() => {
+    if (field.value) {
+      return Object.entries(field.value).map(([key, value]) => ({
+        key,
+        value: String(value),
+      }));
+    }
+
+    return [
+      { key: 'alert_type', value: 'hyperdx' },
+      { key: 'alertname', value: '$alertname' },
+    ];
+  });
+
+  const addLabel = () => {
+    setLabels(prev => [...prev, { key: '', value: '' }]);
+  };
+
+  const removeLabel = (index: number) => {
+    setLabels((prev: Label[]) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateLabel = (
+    index: number,
+    field: 'key' | 'value',
+    value: string,
+  ) => {
+    setLabels(
+      labels.map((label, i) =>
+        i === index ? { ...label, [field]: value } : label,
+      ),
+    );
+  };
+
+  // 当 labels 变化时，更新表单值
+  useEffect(() => {
+    const labelsMap: Record<string, string> = {};
+    labels
+      .filter(label => label.key?.trim() && label.value?.trim())
+      .forEach(label => {
+        labelsMap[label.key] = label.value;
+      });
+
+    // 只有当新的值与当前值不同时才更新，避免无限循环
+    const currentValue = field.value;
+    const newValueStr = JSON.stringify(labelsMap);
+    const currentValueStr = JSON.stringify(currentValue);
+
+    if (newValueStr !== currentValueStr) {
+      field.onChange(labelsMap);
+    }
+  }, [field, labels]);
+
+  return (
+    <div>
+      <Text size="xs" mb={8} opacity={0.7}>
+        Labels
+      </Text>
+      <Stack gap="xs">
+        {labels.map((label, index) => (
+          <Group key={index} gap="xs">
+            <TextInput
+              placeholder="Key"
+              value={label.key}
+              onChange={e => updateLabel(index, 'key', e.currentTarget.value)}
+              size="xs"
+              style={{ flex: 1 }}
+            />
+            <TextInput
+              placeholder="Value"
+              value={label.value}
+              onChange={e => updateLabel(index, 'value', e.currentTarget.value)}
+              size="xs"
+              style={{ flex: 1 }}
+            />
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              onClick={() => removeLabel(index)}
+              size="xs"
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Group>
+        ))}
+        <Button
+          variant="light"
+          size="xs"
+          leftSection={<IconPlus size={14} />}
+          onClick={addLabel}
+        >
+          Add Label
+        </Button>
+      </Stack>
+    </div>
+  );
 };
 
 export const getAlertReferenceLines = ({
