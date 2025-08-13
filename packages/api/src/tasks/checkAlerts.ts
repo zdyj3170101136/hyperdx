@@ -360,7 +360,7 @@ export const buildAlertMessageTemplateTitle = ({
     // TODO: using template engine to render the title
     return template
       ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+      : `Alert for "${savedSearch.name}" - ${value} log events found`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
@@ -527,17 +527,52 @@ export const renderAlertTemplate = async ({
     try {
       const query = await renderChartConfig(chartConfig, metadata);
       const raw = await clickhouseClient
-        .query<'CSV'>({
+        .query<'CSVWithNames'>({
           query: query.sql,
           query_params: query.params,
-          format: 'CSV',
+          format: 'CSVWithNames',
         })
         .then(res => res.text());
 
-      const lines = raw.split('\n');
+      // 去除最后一个空行
+      let lines = raw.split('\n').slice(0, -1);
+      // 找到时间戳字段的索引
+      const headers = lines[0].split(',').map(field => field.slice(1, -1));
+      const timestampIndex = headers.findIndex(header =>
+        header.toLowerCase().includes('timestamp'),
+      );
 
+      lines = lines.map(line =>
+        line
+          .split(',')
+          .map((field, index) => {
+            // 移除首尾的 “, 以及 csv 对 ” 的转意
+            field = field.slice(1, -1);
+            field = field.replace(/""/g, '"');
+            // 如果是时间戳字段，使用 formatDate
+            if (index === timestampIndex) {
+              const date = new Date(field);
+              if (isNaN(date.getTime())) {
+                return field; // 解析失败，原样返回
+              }
+              let formattedDate = date.toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: 'UTC',
+              });
+              formattedDate += ' UTC';
+              return formattedDate;
+            }
+            return field;
+          })
+          .join(' | '),
+      );
       truncatedResults = truncateString(
-        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
+        lines
+          .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+          .join('\n-----------------------------\n'),
         2500,
       );
     } catch (e) {
@@ -550,11 +585,11 @@ export const renderAlertTemplate = async ({
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} lines found, expected ${
+${value} log events found, expected ${
       alert.thresholdType === AlertThresholdType.ABOVE
         ? 'less than'
         : 'greater than'
-    } ${alert.threshold} lines\n${timeRangeMessage}
+    } ${alert.threshold}\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
