@@ -4,6 +4,7 @@ import mongoose, { Schema } from 'mongoose';
 export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
+  Alertmanager = 'alertmanager',
 }
 
 interface MongooseMap extends Map<string, string> {

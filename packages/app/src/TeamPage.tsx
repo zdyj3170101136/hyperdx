@@ -752,6 +752,11 @@ export function CreateWebhookForm({
               label="Generic"
               {...form.register('service', { required: true })}
             />
+            <Radio
+              value={WebhookService.Alertmanager}
+              label="Alertmanager"
+              {...form.register('service', { required: true })}
+            />
           </Group>
         </Radio.Group>
         <TextInput
@@ -889,6 +894,7 @@ function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
+    WebhookService.Alertmanager,
   ]);
 
   const allWebhooks = useMemo(() => {

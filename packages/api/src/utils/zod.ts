@@ -217,6 +217,7 @@ export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 export const zChannel = z.object({
   type: z.literal('webhook'),
   webhookId: z.string().min(1),
+  labels: z.record(z.string(), z.string()),
 });
 
 export const zSavedSearchAlert = z.object({
