@@ -383,13 +383,11 @@ function useLiveUpdate({
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         setIsPause(true);
-        console.log('页面隐藏-停止');
       } else {
         setIsPause(false);
       }
     });
     return () => {
-  
       document.removeEventListener('visibilitychange', () => {
         if (document.hidden) {
           setIsPause(true);
