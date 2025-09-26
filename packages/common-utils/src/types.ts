@@ -498,6 +498,7 @@ const SourceBaseSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
   connection: z.string().min(1, 'Server Connection is required'),
+  alertConnection: z.string().optional(),
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
