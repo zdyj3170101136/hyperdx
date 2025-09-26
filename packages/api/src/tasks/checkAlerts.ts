@@ -20,6 +20,7 @@ import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 
 import * as config from '@/config';
+import { REAL_FRONTEND_URL } from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { getConnectionById } from '@/controllers/connection';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
@@ -68,7 +69,7 @@ export const buildLogSearchLink = ({
   savedSearch: ISavedSearch;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${savedSearch.id}`);
+  const url = new URL(`${config.REAL_FRONTEND_URL}/search/${savedSearch.id}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
@@ -91,7 +92,7 @@ export const buildChartLink = ({
   granularity: string;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
+  const url = new URL(`${config.REAL_FRONTEND_URL}/dashboards/${dashboardId}`);
   // extend both start and end time by 7x granularity
   const from = (startTime.getTime() - ms(granularity) * 7).toString();
   const to = (endTime.getTime() + ms(granularity) * 7).toString();
@@ -854,7 +855,11 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         });
         return;
       }
-      connectionId = source.connection.toString();
+      if (source.alertConnection) {
+        connectionId = source.alertConnection.toString();
+      } else {
+        connectionId = source.connection.toString();
+      }
       chartConfig = {
         connection: connectionId,
         displayType: DisplayType.Line,
@@ -913,7 +918,11 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             });
             return;
           }
-          connectionId = source.connection.toString();
+          if (source.alertConnection) {
+            connectionId = source.alertConnection.toString();
+          } else {
+            connectionId = source.connection.toString();
+          }
           chartConfig = {
             connection: connectionId,
             dateRange: [checkStartTime, checkEndTime],

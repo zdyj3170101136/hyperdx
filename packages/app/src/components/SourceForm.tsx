@@ -1078,6 +1078,12 @@ export function TableSourceForm({
         <FormRow label={'Server Connection'}>
           <ConnectionSelectControlled control={control} name={`connection`} />
         </FormRow>
+        <FormRow label={'Alert Connection (Optional)'}>
+          <ConnectionSelectControlled
+            control={control}
+            name={`alertConnection`}
+          />
+        </FormRow>
         <FormRow label={'Database'}>
           <DatabaseSelectControlled
             control={control}

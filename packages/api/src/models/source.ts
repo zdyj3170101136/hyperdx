@@ -7,9 +7,11 @@ import mongoose, { Schema } from 'mongoose';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-export interface ISource extends Omit<TSource, 'connection'> {
+export interface ISource
+  extends Omit<TSource, 'connection' | 'alertConnection'> {
   team: ObjectId;
   connection: ObjectId | string;
+  alertConnection?: ObjectId | string;
 }
 
 export type SourceDocument = mongoose.HydratedDocument<ISource>;
@@ -38,7 +40,11 @@ export const Source = mongoose.model<ISource>(
         required: true,
         ref: 'Connection',
       },
-
+      alertConnection: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: false,
+        ref: 'Connection',
+      },
       name: String,
       displayedTimestampValueExpression: String,
       implicitColumnExpression: String,
