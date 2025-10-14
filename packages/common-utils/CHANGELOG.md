@@ -1,5 +1,17 @@
 # @hyperdx/common-utils
 
+## 0.7.1
+
+### Patch Changes
+
+- 35c4222: fix: Improve table key parsing
+- b68a4c9: Tweak getMapKeys to leverage one row limiting implementation
+- 5efa2ff: feat: handle k8s metrics semantic convention updates
+- b46ae2f: fix: Fix sidebar when selecting JSON property
+- 2f49f9b: fix: ignore max_rows_to_read for filter values distribution
+- daffcf3: feat: Add percentages to filter values
+- 5210bb8: refactor: clean up table connections
+
 ## 0.7.0
 
 ### Minor Changes

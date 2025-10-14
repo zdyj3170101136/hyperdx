@@ -1,5 +1,39 @@
 # @hyperdx/app
 
+## 2.7.0
+
+### Minor Changes
+
+- 730325a: Improve SourceSchemaPreview button integration in SourceSelect and DBTableSelect components.
+- dbf1682: feat: add refresh to existing preset dashboards
+- eaff492: Add toggle filters button, copy field, and per-row copy-to-clipboard for JSON data and modal URLs in RawLogTable
+
+### Patch Changes
+
+- 13b191c: feat: Allow selection of log and metric source on K8s dashboard
+- 1ed32e4: fix issue where new lines are not persisted to url params correctly
+- 35c4222: fix: Improve table key parsing
+- b68a4c9: Tweak getMapKeys to leverage one row limiting implementation
+- 1cda148: Fixes scrolling in TimePicker
+- 5efa2ff: feat: handle k8s metrics semantic convention updates
+- bd940f3: style: Improve dashboard filter modal UX
+- ec2ea56: Improve Support for Dynamic and JSON(<parameters>) Types
+- b46ae2f: fix: Fix sidebar when selecting JSON property
+- 62eddcf: fix: Fix infinite querying on non-windowed searches
+- 05ca6ce: Attempt to make claude code reviews less chirpy
+- daffcf3: feat: Add percentages to filter values
+- 5210bb8: refactor: clean up table connections
+- 0cf179f: Fixes typo in type definition
+- b344804: Add Sorting Feature to all search tables
+- Updated dependencies [35c4222]
+- Updated dependencies [b68a4c9]
+- Updated dependencies [5efa2ff]
+- Updated dependencies [b46ae2f]
+- Updated dependencies [2f49f9b]
+- Updated dependencies [daffcf3]
+- Updated dependencies [5210bb8]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes
