@@ -79,8 +79,14 @@ export const createAlert = async (
   }
 
   if (alertInput.source === AlertSource.SAVED_SEARCH) {
-    if ((await SavedSearch.findById(alertInput.savedSearchId)) == null) {
+    const savedSearch = await SavedSearch.findById(alertInput.savedSearchId);
+    if (savedSearch == null) {
       throw new Error('Saved Search ID not found');
+    }
+
+    // If alert name is not set, use savedSearch name
+    if (!alertInput.name && savedSearch.name) {
+      alertInput.name = savedSearch.name;
     }
   }
 
@@ -96,6 +102,17 @@ export const updateAlert = async (
   teamId: ObjectId,
   alertInput: AlertInput,
 ) => {
+  if (alertInput.source === AlertSource.SAVED_SEARCH) {
+    const savedSearch = await SavedSearch.findById(alertInput.savedSearchId);
+    if (savedSearch == null) {
+      throw new Error('Saved Search ID not found');
+    }
+
+    // If alert name is not set, use savedSearch name
+    if (!alertInput.name && savedSearch.name) {
+      alertInput.name = savedSearch.name;
+    }
+  }
   // should consider clearing AlertHistory when updating an alert?
   return Alert.findOneAndUpdate(
     {

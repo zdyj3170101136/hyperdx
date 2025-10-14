@@ -160,6 +160,9 @@ const AlertForm = ({
             Send to
           </Text>
           <AlertChannelForm control={control} type={watch('channel.type')} />
+          <Text size="xxs" opacity={0.5} mt="xs">
+            Include a sample of 10 logs in the alert notification
+          </Text>
         </Paper>
       </Stack>
 
@@ -239,7 +242,7 @@ export const DBSearchPageAlertModal = ({
   );
 
   const [activeIndex, setActiveIndex] = React.useState<'stage' | `${number}`>(
-    'stage',
+    '0',
   );
 
   const setTab = (value: string | null) => {
@@ -374,29 +377,8 @@ export const DBSearchPageAlertModal = ({
             {savedSearch?.where}
           </Text>
         </Stack>
-
-        <Tabs value={activeIndex} onChange={setTab} mb="xs">
-          <Tabs.List>
-            {(savedSearch?.alerts || []).map((alert, index) => (
-              <Tabs.Tab key={alert.id} value={`${index}`}>
-                <Group gap="xs">
-                  {CHANNEL_ICONS[alert.channel.type]} Alert {index + 1}
-                </Group>
-              </Tabs.Tab>
-            ))}
-            <Tabs.Tab value="stage">
-              <Group gap={4}>
-                <i
-                  className="bi bi-plus fs-5 text-slate-400"
-                  style={{ marginLeft: -8 }}
-                />
-                New Alert
-              </Group>
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs>
-
         <AlertForm
+          // 移除 tab, alertname one to one savedsearch
           key={activeIndex}
           hasSavedSearch={!!savedSearch}
           sourceId={searchedConfig?.source}
