@@ -1,5 +1,24 @@
 # @hyperdx/api
 
+## 2.7.0
+
+### Minor Changes
+
+- f4c3523: Allows defining the ClickHouse request timeout value from the command line on the check-alert task
+- c90a93e: Updated the cron package to pick up a fix for stalled cron tasks.
+
+### Patch Changes
+
+- e032af5: Add new logging pararmeter for otel collector
+- Updated dependencies [35c4222]
+- Updated dependencies [b68a4c9]
+- Updated dependencies [5efa2ff]
+- Updated dependencies [b46ae2f]
+- Updated dependencies [2f49f9b]
+- Updated dependencies [daffcf3]
+- Updated dependencies [5210bb8]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes
