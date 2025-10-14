@@ -68,6 +68,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  firedAt: Date;
+  resolvedAt: Date;
 }
 
 export type AlertDocument = mongoose.HydratedDocument<IAlert>;

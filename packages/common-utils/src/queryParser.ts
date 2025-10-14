@@ -20,7 +20,8 @@ function decodeSpecialTokens(query: string): string {
     .replace('http_COLON_//', 'http://')
     .replace('https_COLON_//', 'https://')
     .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
-    .replace(/HDX_COLON/g, ':');
+    .replace(/HDX_COLON/g, ':')
+    .replace(/\\ /g, ' '); // 将转义的空格 "\ " 转换为实际空格 ", see https://github.com/hyperdxio/hyperdx/issues/1202
 }
 
 export function parse(query: string): lucene.AST {

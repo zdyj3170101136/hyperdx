@@ -4458,6 +4458,7 @@ __metadata:
     "@types/express": "npm:^4.17.13"
     "@types/express-session": "npm:^1.17.7"
     "@types/extract-domain": "npm:^2.3.1"
+    "@types/fnv-plus": "npm:^1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^28.1.1"
     "@types/lodash": "npm:^4.14.198"
@@ -4486,6 +4487,7 @@ __metadata:
     express-session: "npm:^1.17.3"
     express-winston: "npm:^4.2.0"
     extract-domain: "npm:^2.4.1"
+    fnv-plus: "npm:^1.3.1"
     handlebars: "npm:^4.7.8"
     http-graceful-shutdown: "npm:^3.1.13"
     http-proxy-middleware: "npm:^3.0.5"
@@ -6211,7 +6213,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/api@npm:^1.3.0, @opentelemetry/api@npm:^1.8.0":
+"@opentelemetry/api@npm:^1.3.0, @opentelemetry/api@npm:^1.4.0, @opentelemetry/api@npm:^1.8.0":
   version: 1.9.0
   resolution: "@opentelemetry/api@npm:1.9.0"
   checksum: 10c0/9aae2fe6e8a3a3eeb6c1fdef78e1939cf05a0f37f8a4fae4d6bf2e09eb1e06f966ece85805626e01ba5fab48072b94f19b835449e58b6d26720ee19a58298add
@@ -9963,6 +9965,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/fnv-plus@npm:^1":
+  version: 1.3.2
+  resolution: "@types/fnv-plus@npm:1.3.2"
+  checksum: 10c0/9581c52ad1c1665db5fde49efe6f08ba4d654a68cd85dc3ff94c3011af263f407ea810d7b16360bfe493f9759ac403146a4e33a22bc244a9dd8a782d940cd406
+  languageName: node
+  linkType: hard
+
 "@types/graceful-fs@npm:^4.1.3":
   version: 4.1.6
   resolution: "@types/graceful-fs@npm:4.1.6"
@@ -12431,6 +12440,13 @@ __metadata:
   version: 2.2.0
   resolution: "binary-extensions@npm:2.2.0"
   checksum: 10c0/d73d8b897238a2d3ffa5f59c0241870043aa7471335e89ea5e1ff48edb7c2d0bb471517a3e4c5c3f4c043615caa2717b5f80a5e61e07503d51dc85cb848e665d
+  languageName: node
+  linkType: hard
+
+"bintrees@npm:1.0.2":
+  version: 1.0.2
+  resolution: "bintrees@npm:1.0.2"
+  checksum: 10c0/132944b20c93c1a8f97bf8aa25980a76c6eb4291b7f2df2dbcd01cb5b417c287d3ee0847c7260c9f05f3d5a4233aaa03dec95114e97f308abe9cc3f72bed4a44
   languageName: node
   linkType: hard
 
@@ -16889,6 +16905,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fnv-plus@npm:^1.3.1":
+  version: 1.3.1
+  resolution: "fnv-plus@npm:1.3.1"
+  checksum: 10c0/770b253629c8e27cff3d94e68fbb94069daeac2b1df833bb03afb280c869ad43b40ecec0fe3a9b6745fa8e549b6c9b4bb6019311cf6d100b8df38497a3d2c258
+  languageName: node
+  linkType: hard
+
 "focus-visible@npm:^5.2.0":
   version: 5.2.0
   resolution: "focus-visible@npm:5.2.0"
@@ -18245,10 +18268,12 @@ __metadata:
     eslint-plugin-prettier: "npm:^5.2.1"
     eslint-plugin-security: "npm:^2.1.0"
     eslint-plugin-simple-import-sort: "npm:^12.1.1"
+    fnv-plus: "npm:^1.3.1"
     husky: "npm:^8.0.3"
     lint-staged: "npm:^13.1.2"
     nx: "npm:16.8.1"
     prettier: "npm:3.3.3"
+    prom-client: "npm:^15.1.3"
   languageName: unknown
   linkType: soft
 
@@ -24116,6 +24141,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"prom-client@npm:^15.1.3":
+  version: 15.1.3
+  resolution: "prom-client@npm:15.1.3"
+  dependencies:
+    "@opentelemetry/api": "npm:^1.4.0"
+    tdigest: "npm:^0.1.1"
+  checksum: 10c0/816525572e5799a2d1d45af78512fb47d073c842dc899c446e94d17cfc343d04282a1627c488c7ca1bcd47f766446d3e49365ab7249f6d9c22c7664a5bce7021
+  languageName: node
+  linkType: hard
+
 "promise-retry@npm:^2.0.1":
   version: 2.0.1
   resolution: "promise-retry@npm:2.0.1"
@@ -27600,6 +27635,15 @@ __metadata:
     mkdirp: "npm:^1.0.3"
     yallist: "npm:^4.0.0"
   checksum: 10c0/a5eca3eb50bc11552d453488344e6507156b9193efd7635e98e867fab275d527af53d8866e2370cd09dfe74378a18111622ace35af6a608e5223a7d27fe99537
+  languageName: node
+  linkType: hard
+
+"tdigest@npm:^0.1.1":
+  version: 0.1.2
+  resolution: "tdigest@npm:0.1.2"
+  dependencies:
+    bintrees: "npm:1.0.2"
+  checksum: 10c0/10187b8144b112fcdfd3a5e4e9068efa42c990b1e30cd0d4f35ee8f58f16d1b41bc587e668fa7a6f6ca31308961cbd06cd5d4a4ae1dc388335902ae04f7d57df
   languageName: node
   linkType: hard
 
