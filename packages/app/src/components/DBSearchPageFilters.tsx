@@ -17,13 +17,17 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
+import { useQueries } from '@tanstack/react-query';
 
-import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  keepOnlyLuceneField,
+  removeLuceneField,
+} from '@/components/DBRowJsonViewer';
+import { useAllFields } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
-import { mergePath } from '@/utils';
+import { mergePath, roundDateRangeToDays } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -379,14 +383,35 @@ const DBSearchPageFiltersComponent = ({
   );
   const { width, startResize } = useResizable(16, 'left');
 
-  const { data: countData } = useExplainQuery(chartConfig);
-  const numRows: number = countData?.[0]?.rows ?? 0;
+  const roundedDateRange = useMemo(() => {
+    return roundDateRangeToDays(chartConfig.dateRange);
+  }, [chartConfig.dateRange]);
 
-  const { data, isLoading } = useAllFields({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
+  // 获取所有 keys 的时候，带上 ServiceName 过滤条件。
+  let queryAllFieldsWhere = '';
+  let queryAllFieldsChartConfig = undefined;
+  if (chartConfig.whereLanguage === 'lucene') {
+    const { result: result } = keepOnlyLuceneField(
+      chartConfig.where,
+      'ServiceName',
+    );
+    queryAllFieldsWhere = result;
+    queryAllFieldsChartConfig = {
+      ...chartConfig,
+      where: queryAllFieldsWhere,
+      dateRange: roundedDateRange,
+    };
+  }
+
+  const { data, isLoading } = useAllFields(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+    },
+    undefined,
+    queryAllFieldsChartConfig,
+  );
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 
@@ -439,15 +464,67 @@ const DBSearchPageFiltersComponent = ({
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
   const keyLimit = 20;
-  const {
-    data: facets,
-    isLoading: isFacetsLoading,
-    isFetching: isFacetsFetching,
-  } = useGetKeyValues({
-    chartConfigs: { ...chartConfig, dateRange },
-    limit: keyLimit,
-    keys: datum,
+
+  // 按 where 条件分组 keys，相同 where 条件的 keys 可以批量获取
+  const chartConfigsForKeys = useMemo(() => {
+    const configMap = new Map<string, { config: any; keys: string[] }>();
+
+    datum.forEach(key => {
+      let cleanedWhere = chartConfig.where;
+      if (chartConfig.whereLanguage === 'lucene') {
+        const { result } = removeLuceneField(chartConfig.where, key, '');
+        cleanedWhere = result;
+      }
+
+      const configKey = JSON.stringify({
+        ...chartConfig,
+        dateRange,
+        where: cleanedWhere,
+      });
+
+      if (configMap.has(configKey)) {
+        configMap.get(configKey)!.keys.push(key);
+      } else {
+        configMap.set(configKey, {
+          config: {
+            ...chartConfig,
+            dateRange,
+            where: cleanedWhere,
+          },
+          keys: [key],
+        });
+      }
+    });
+
+    return Array.from(configMap.values());
+  }, [chartConfig, dateRange, datum]);
+
+  // 使用 React Query 的 useQueries 来并行获取每个配置的 keys
+  const facetQueries = useQueries({
+    queries: chartConfigsForKeys.map(({ config, keys }) => ({
+      queryKey: ['useGetKeyValues', config, keys, keyLimit],
+      queryFn: async () => {
+        const metadata = getMetadata();
+        return await metadata.getKeyValues({
+          chartConfig: config,
+          keys: keys,
+          limit: keyLimit,
+        });
+      },
+      staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    })),
   });
+
+  // 合并所有查询的结果
+  const facets = useMemo(() => {
+    return facetQueries
+      .map(query => query.data)
+      .filter(Boolean)
+      .flat();
+  }, [facetQueries]);
+
+  const isFacetsLoading = facetQueries.some(query => query.isLoading);
+  const isFacetsFetching = facetQueries.some(query => query.isFetching);
 
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
@@ -455,13 +532,23 @@ const DBSearchPageFiltersComponent = ({
   );
   const loadMoreFilterValuesForKey = useCallback(
     async (key: string) => {
+      const rawKey = key;
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
         const metadata = getMetadata();
+        let cleanedWhere = chartConfig.where;
+        if (chartConfig.whereLanguage === 'lucene') {
+          const result = removeLuceneField(chartConfig.where, key, '');
+          cleanedWhere = result.result;
+          // 如果是 lucene, 则将 key 从 a.b -> a['b']，因为 getKeyValues 仅支持后一种格式。
+          key = key.replace(/^([^.]+)\.(.+)$/, "$1['$2']");
+        }
+
         const newKeyVals = await metadata.getKeyValues({
           chartConfig: {
             ...chartConfig,
             dateRange,
+            where: cleanedWhere,
           },
           keys: [key],
           limit: 200,
@@ -479,7 +566,7 @@ const DBSearchPageFiltersComponent = ({
       } finally {
         setLoadMoreLoadingKeys(prev => {
           const newSet = new Set(prev);
-          newSet.delete(key);
+          newSet.delete(rawKey);
           return newSet;
         });
       }
@@ -487,8 +574,20 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, setExtraFacets, dateRange],
   );
   const shownFacets = useMemo(() => {
-    const _facets: { key: string; value: string[] }[] = [];
+    const _facets: {
+      key: string;
+      value: string[];
+      hasSelectedValues: boolean;
+    }[] = [];
     for (const facet of facets ?? []) {
+      if (!facet || !facet.key) {
+        continue;
+      }
+      if (chartConfig.whereLanguage === 'lucene') {
+        // 如果是 lucene, 则将 key 从 a['b'] 形式替换成 a.b
+        // 这样 modify filter 生成的查询语句才是正确的。
+        facet.key = facet.key.replace(/^([^[]+)\['([^']+)']$/, '$1.$2');
+      }
       // don't include empty facets, unless they are already selected
       const filter = filterState[facet.key];
       const hasSelectedValues =
@@ -505,9 +604,14 @@ const DBSearchPageFiltersComponent = ({
           _facets.push({
             key: facet.key,
             value: allValues,
+            hasSelectedValues: hasSelectedValues,
           });
         } else {
-          _facets.push(facet);
+          _facets.push({
+            key: facet.key,
+            value: facet.value,
+            hasSelectedValues: hasSelectedValues,
+          });
         }
       }
     }
@@ -516,9 +620,19 @@ const DBSearchPageFiltersComponent = ({
       key => !_facets.some(facet => facet.key === key),
     );
     for (const key of remainingFilterState) {
-      _facets.push({ key, value: Array.from(filterState[key].included) });
+      _facets.push({
+        key,
+        value: Array.from(filterState[key].included),
+        hasSelectedValues: true,
+      });
     }
-    return _facets;
+
+    // 排序：有选中值的排在前面，其他按字典序排序
+    return _facets.sort((a, b) => {
+      if (a.hasSelectedValues && !b.hasSelectedValues) return -1;
+      if (!a.hasSelectedValues && b.hasSelectedValues) return 1;
+      return a.key.localeCompare(b.key);
+    });
   }, [facets, filterState, extraFacets]);
 
   const showClearAllButton = useMemo(

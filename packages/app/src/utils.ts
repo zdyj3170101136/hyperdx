@@ -717,3 +717,29 @@ export const stripTrailingSlash = (url: string | undefined | null): string => {
   }
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
+
+export function roundDateRangeToHours(dateRange: [Date, Date]): [Date, Date] {
+  const [start, end] = dateRange;
+
+  const startOfHour = new Date(start);
+  startOfHour.setMinutes(0, 0, 0); // 设置为当前小时的 00:00
+
+  const endOfHour = new Date(end);
+  endOfHour.setMinutes(0, 0, 0); // 设置为当前小时的 00:00
+  endOfHour.setHours(endOfHour.getHours() + 1); // 设置为下一个小时的 00:00
+
+  return [startOfHour, endOfHour];
+}
+
+export function roundDateRangeToDays(dateRange: [Date, Date]): [Date, Date] {
+  const [start, end] = dateRange;
+
+  const startOfDay = new Date(start);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(end);
+  endOfDay.setHours(0, 0, 0, 0);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  return [startOfDay, endOfDay];
+}

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
+import { keepOnlyLuceneField } from '@/components/DBRowJsonViewer';
 import {
   deduplicate2dArray,
   useAllFields,
   useGetKeyValues,
 } from '@/hooks/useMetadata';
-import { toArray } from '@/utils';
+import { roundDateRangeToDays, roundDateRangeToHours, toArray } from '@/utils';
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -55,13 +56,10 @@ export function useAutoCompleteOptions(
     timestampValueExpression: timestampValueExpression,
     select: '',
     whereLanguage: 'lucene',
-    // 如果 value 是 a:b level:x 的形式，不是在搜索列名。
-    // 如果 value 是 a:b lev 的形式，将 a:b 作为搜索条件。
-    // TODO 目前只支持 mapKeys 的搜索，添加 keyname ilike '%lev%' 的搜索。
-    where: isSearchColumeValue ? '' : removeAfterLastSpace(value),
-    // 使用日志查询的时间范围获取 key,value
+    where: keepOnlyLuceneField(value, 'ServiceName').result,
+    // 使用日志查询的时间范围获取 key,value，按小时取整
     // fix https://github.com/hyperdxio/hyperdx/issues/974
-    dateRange: dateRange,
+    dateRange: roundDateRangeToDays(dateRange),
     implicitColumnExpression: 'Body',
   }));
 
@@ -139,12 +137,17 @@ export function useAutoCompleteOptions(
     timestampValueExpression: timestampValueExpression,
     select: '',
     whereLanguage: 'lucene',
-    // 如果 value 是 a:b level: 的形式，将 a:b 作为搜索条件。
+    // 如果 value 是 a:b level: 的形式，将 a:b level:* 作为搜索条件。
     // 如果 value 是 a:b level:c 的形式，将 value 作为搜索条件。
-    where: value?.endsWith(':') ? removeAfterLastSpace(value) : value,
-    // 使用日志查询的时间范围获取 key,value
+    // 如果 value 就是 a:b c 的形式，说明不是在搜索列的值。
+    where: value?.endsWith(':')
+      ? value + '*'
+      : lastToken.includes(':')
+        ? value
+        : '',
+    // 使用日志查询的时间范围获取 key,value，按小时取整
     // fix https://github.com/hyperdxio/hyperdx/issues/974
-    dateRange: dateRange,
+    dateRange: roundDateRangeToHours(dateRange),
     implicitColumnExpression: 'Body',
   }));
   const { data: keyVals } = useGetKeyValues({
