@@ -246,12 +246,23 @@ export class Metadata {
       );
     }
 
-    let strategy: 'groupUniqArrayArray' | 'lowCardinalityKeys' =
-      'groupUniqArrayArray';
+    let strategy:
+      | 'groupUniqArrayArray'
+      | 'lowCardinalityKeys'
+      | 'groupUniqArrayArrayMerge' = 'groupUniqArrayArray';
     if (colMeta.type.startsWith('Map(LowCardinality(String)')) {
-      strategy = 'lowCardinalityKeys';
+      if (
+        ['LogAttributes', 'ResourceAttributes', 'ScopeAttributes'].includes(
+          colMeta.name,
+        )
+      ) {
+        strategy = 'groupUniqArrayArrayMerge';
+      } else {
+        strategy = 'lowCardinalityKeys';
+      }
     }
 
+    let keysArr = true;
     const where = metricName
       ? chSql`WHERE MetricName=${{ String: metricName }}`
       : '';
@@ -272,7 +283,30 @@ export class Metadata {
         }}) as keysArr
         FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
       }
+    } else if (strategy === 'groupUniqArrayArrayMerge') {
+      if (chartConfig) {
+        // 将获取 mapKeys 替换成对 attributes_keys_aggregate 的搜索
+        // 因为 max_rows_to_read 不精确
+        // 而且用户 role 携带的参数会导致查询速度大大减慢
+        sql = await renderChartConfig(
+          {
+            ...convertToChartConfigWithOptDateRange(chartConfig),
+            timestampValueExpression: 'Date',
+            from: {
+              ...chartConfig.from,
+              tableName: 'attributes_keys_aggregate',
+            },
+            // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
+            select: `groupUniqArrayArrayMerge(${column}KeysState) as keysArr`,
+          },
+          this,
+        );
+      } else {
+        sql = chSql`SELECT groupUniqArrayArrayMerge(${column}KeysState) as keysArr
+        FROM ${tableExpr({ database: databaseName, table: 'attributes_keys_aggregate' })} ${where}`;
+      }
     } else {
+      keysArr = false;
       if (chartConfig) {
         chartConfig.limit = {
           limit: maxKeys,
@@ -310,7 +344,7 @@ export class Metadata {
         .then(res => res.json<Record<string, unknown>>())
         .then(d => {
           let output: string[];
-          if (strategy === 'groupUniqArrayArray') {
+          if (keysArr) {
             output = d.data[0].keysArr as string[];
           } else {
             output = d.data.map(row => row.key) as string[];
@@ -461,6 +495,8 @@ export class Metadata {
     return tableMetadata;
   }
 
+  // 当 keys 有多个的时候，使用 groupUniqArray 查询。
+  // 当 keys 只有一个的时候，使用 distinct 查询。
   async getKeyValues({
     chartConfig,
     keys,
@@ -476,16 +512,30 @@ export class Metadata {
       limit: limit,
     };
     return this.cache.getOrFetch(
-      `values.${JSON.stringify(chartConfig)}.${keys.join(',')}.${limit}${disableRowLimit}`,
+      `values.${JSON.stringify(chartConfig)}.${keys.join(',')}.${disableRowLimit}`,
       async () => {
-        const sql = await renderChartConfig(
-          {
-            ...convertToChartConfigWithOptDateRange(chartConfig),
-            // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
-            select: `DISTINCT ${keys.map((k, i) => `${k} AS param${i}`).join(', ')}`,
-          },
-          this,
-        );
+        let sql: ChSql;
+        if (keys.length > 1) {
+          sql = await renderChartConfig(
+            {
+              ...chartConfig,
+              limit: {},
+              select: keys
+                .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+                .join(', '),
+            },
+            this,
+          );
+        } else {
+          sql = await renderChartConfig(
+            {
+              ...convertToChartConfigWithOptDateRange(chartConfig),
+              // groupUniqArray 需要扫描所有数据，使用 distinct 替代。
+              select: `DISTINCT ${keys[0]} AS param0`,
+            },
+            this,
+          );
+        }
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -501,27 +551,29 @@ export class Metadata {
           })
           .then(res => res.json<any>());
 
-        // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
-        // string[], sometimes it's { [key: string]: string; }
-        const groupedData: Record<string, string[]> = {};
-
-        for (const dataRow of Object.values(json?.data || [])) {
-          for (const [key, value] of Object.entries(dataRow)) {
-            const fieldKey = keys[parseInt(key.replace('param', ''))];
-            const fieldValue = value as string;
-
-            if (fieldValue !== '') {
-              if (!groupedData[fieldKey]) {
-                groupedData[fieldKey] = [];
-              }
-              groupedData[fieldKey].push(fieldValue);
+        if (keys.length > 1) {
+          // 处理 groupUniqArray 的结果
+          return Object.entries(json?.data?.[0] || {}).map(([key, value]) => ({
+            key: keys[parseInt(key.replace('param', ''))],
+            value: (value as string[])?.filter(Boolean), // remove nulls
+          }));
+        } else {
+          // 处理 DISTINCT 的结果 - 只有一个 key，直接收集所有值
+          const values: string[] = [];
+          for (const dataRow of Object.values(json?.data || [])) {
+            const value = Object.values(dataRow)[0] as string;
+            if (value && value !== '') {
+              values.push(value);
             }
           }
+
+          return [
+            {
+              key: keys[0],
+              value: values,
+            },
+          ];
         }
-        return Object.entries(groupedData).map(([key, value]) => ({
-          key: key,
-          value: value,
-        }));
       },
     );
   }

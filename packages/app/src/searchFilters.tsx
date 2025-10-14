@@ -1,7 +1,9 @@
 import React from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
+import lucene from '@hyperdx/lucene';
 
+import { removeLuceneField } from './components/DBRowJsonViewer';
 import { useLocalStorage } from './utils';
 
 export type FilterState = {
@@ -103,12 +105,183 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
+// 从 where 参数中提取筛选条件并转换为 FilterState
+export const parseWhereToFilters = (
+  where: string,
+): {
+  filters: FilterState;
+} => {
+  if (!where || where.trim() === '') {
+    return { filters: {} };
+  }
+
+  try {
+    const ast = lucene.parse(where);
+
+    const filters: FilterState = {};
+
+    // 分析 AST 结构
+    const keyConditions = analyzeAST(ast);
+
+    // 检查每个 key 的条件是否 parseable
+    for (const [key, conditions] of Object.entries(keyConditions)) {
+      const included: string[] = [];
+      const excluded: string[] = [];
+
+      for (const condition of conditions) {
+        const value = condition.term;
+        if (condition.field && condition.field.startsWith('-')) {
+          excluded.push(value);
+        } else {
+          included.push(value);
+        }
+      }
+
+      if (included.length > 0 || excluded.length > 0) {
+        // 返回的 filter 中, key 需要移除 - 前缀
+        filters[key.startsWith('-') ? key.slice(1) : key] = {
+          included: new Set(included),
+          excluded: new Set(excluded),
+        };
+      }
+    }
+
+    return { filters };
+  } catch (error) {
+    // 如果解析失败，返回空结果
+    console.warn('Failed to parse Lucene query:', error);
+    return { filters: {} };
+  }
+};
+
+// 分析 AST 结构，提取每个 key 的条件
+function analyzeAST(ast: any): Record<string, any[]> {
+  const keyConditions: Record<string, any[]> = {};
+
+  function traverse(node: any) {
+    if (!node) return;
+
+    // 如果是叶子节点（term）
+    if (node.term) {
+      if (node.field) {
+        if (node.field === '<implicit>') {
+          // token。
+          return;
+        }
+        if (!keyConditions[node.field]) {
+          keyConditions[node.field] = [];
+        }
+        keyConditions[node.field].push(node);
+      }
+      return;
+    }
+    // 递归处理左右子树
+    traverse(node.left);
+    traverse(node.right);
+  }
+
+  traverse(ast);
+  return keyConditions;
+}
+
+export type FilterChangeInfo = {
+  type: 'added' | 'removed';
+  field: string;
+  value: string;
+  filterType: 'included' | 'excluded';
+};
+
+// 检测所有筛选条件的变动
+// 比如选中一个 key，然后再点击 exclude
+// 会产生两个变动，一个是 delete included，一个是 add excluded
+function detectFilterChanges(
+  prevFilters: FilterState,
+  newFilters: FilterState,
+): FilterChangeInfo[] {
+  const changes: FilterChangeInfo[] = [];
+
+  // 检查所有字段的变动
+  const allFields = new Set([
+    ...Object.keys(prevFilters),
+    ...Object.keys(newFilters),
+  ]);
+
+  for (const field of allFields) {
+    const prevFieldFilters = prevFilters[field] || {
+      included: new Set(),
+      excluded: new Set(),
+    };
+    const newFieldFilters = newFilters[field] || {
+      included: new Set(),
+      excluded: new Set(),
+    };
+
+    // 检查 included 的变动
+    for (const value of prevFieldFilters.included) {
+      if (!newFieldFilters.included.has(value)) {
+        // 从 included 中移除
+        changes.push({
+          type: 'removed',
+          field,
+          value,
+          filterType: 'included',
+        });
+      }
+    }
+
+    for (const value of newFieldFilters.included) {
+      if (!prevFieldFilters.included.has(value)) {
+        // 新增到 included
+        changes.push({
+          type: 'added',
+          field,
+          value,
+          filterType: 'included',
+        });
+      }
+    }
+
+    // 检查 excluded 的变动
+    for (const value of prevFieldFilters.excluded) {
+      if (!newFieldFilters.excluded.has(value)) {
+        // 从 excluded 中移除
+        changes.push({
+          type: 'removed',
+          field,
+          value,
+          filterType: 'excluded',
+        });
+      }
+    }
+
+    for (const value of newFieldFilters.excluded) {
+      if (!prevFieldFilters.excluded.has(value)) {
+        // 新增到 excluded
+        changes.push({
+          type: 'added',
+          field,
+          value,
+          filterType: 'excluded',
+        });
+      }
+    }
+  }
+
+  return changes;
+}
+
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  where = '',
+  onWhereChange,
+  whereLanguage = 'lucene',
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  where?: string;
+  onWhereChange: (where: string) => void;
+  whereLanguage?: string;
 }) => {
   const parsedQuery = React.useMemo(() => {
     try {
@@ -119,24 +292,72 @@ export const useSearchPageFilterState = ({
     }
   }, [searchQuery]);
 
+  // 当查询语法为 lucene 的时候，所有筛选条件都在 where 函数中。
+  // 从预处理的 where 参数中提取筛选条件
+  const { filters: whereFilters } = React.useMemo(() => {
+    try {
+      if (whereLanguage === 'lucene') {
+        return parseWhereToFilters(where) as { filters: FilterState };
+      } else {
+        return { filters: {} };
+      }
+    } catch (e) {
+      console.error('Error parsing where to filters:', e);
+      return { filters: {} };
+    }
+  }, [where, whereLanguage]);
+
+  // 根据 whereLanguage 选择使用哪个筛选条件
+  const combinedFilters = React.useMemo(() => {
+    return whereLanguage === 'lucene' ? whereFilters : parsedQuery.filters;
+  }, [whereLanguage, whereFilters, parsedQuery.filters]);
+
   const [filters, setFilters] = React.useState<FilterState>({});
 
   React.useEffect(() => {
     if (
-      !areFiltersEqual(filters, parsedQuery.filters) &&
-      Object.values(parsedQuery.filters).length > 0
+      // 不要 check combinedFilters 的长度
+      // 例如点击 filter 后，通过行快捷键移除 remove filter，此时就为空。
+      !areFiltersEqual(filters, combinedFilters)
     ) {
-      setFilters(parsedQuery.filters);
+      setFilters(combinedFilters);
     }
-    // only react to changes in parsed query
+    // only react to changes in combined filters
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedQuery.filters]);
+  }, [combinedFilters]);
 
   const updateFilterQuery = React.useCallback(
-    (newFilters: FilterState) => {
-      onFilterChange(filtersToQuery(newFilters));
+    (newFilters: FilterState, prevFilters?: FilterState) => {
+      if (whereLanguage === 'lucene') {
+        let finalWhere = ''; // 如果 prevFilters 为空，则直接清空
+        if (prevFilters) {
+          finalWhere = where;
+          const changes = detectFilterChanges(prevFilters, newFilters);
+          changes.forEach(change => {
+            if (change.type === 'removed') {
+              finalWhere = removeLuceneField(
+                finalWhere,
+                change.field,
+                change.value,
+              ).result;
+            } else {
+              if (finalWhere !== '') {
+                finalWhere += ' AND ';
+              }
+              if (change.filterType === 'included') {
+                finalWhere = finalWhere + `${change.field}:"${change.value}"`;
+              } else {
+                finalWhere = finalWhere + `-${change.field}:"${change.value}"`;
+              }
+            }
+          });
+        }
+        onWhereChange(finalWhere);
+      } else {
+        onFilterChange(filtersToQuery(newFilters));
+      }
     },
-    [onFilterChange],
+    [onFilterChange, onWhereChange, where, whereLanguage],
   );
 
   const setFilterValue = React.useCallback(
@@ -179,7 +400,9 @@ export const useSearchPageFilterState = ({
             draft[property].included.add(value);
           }
         });
-        updateFilterQuery(newFilters);
+
+        // 传递 prevFilters 给 updateFilterQuery 以便检测变动
+        updateFilterQuery(newFilters, prevFilters);
         return newFilters;
       });
     },
@@ -192,7 +415,7 @@ export const useSearchPageFilterState = ({
         const newFilters = produce(prevFilters, draft => {
           delete draft[property];
         });
-        updateFilterQuery(newFilters);
+        updateFilterQuery(newFilters, prevFilters);
         return newFilters;
       });
     },

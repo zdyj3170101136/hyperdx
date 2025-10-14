@@ -4,6 +4,7 @@ import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
+import lucene from '@hyperdx/lucene';
 import {
   ActionIcon,
   Box,
@@ -124,82 +125,127 @@ function HyperJsonMenu() {
   );
 }
 
-// removeLuceneField('a:x -b:y c:z', "b", "y")  // 返回 'a:x c:z'
-// removeLuceneField('a:"x" -a:x', "a", "x")    // 返回 'a:"x"'
-// removeLuceneField("  a:x -b:y  ", "c", "z")  // 原样返回，因为 c 不存在
-function removeLuceneField(
+// value 为空时，删除所有符合 key 的节点
+// value 不为空时，删除符合 key 和 value 的节点
+// keep 为 true 的时候，保留符合条件的 node；否则删除
+// modified 表示是否有移除
+function rangeNodesWithKey(
+  ast: any,
+  key: string,
+  value: string,
+  keep: boolean,
+): { result: any; modified: boolean } {
+  if (!ast) return { result: null, modified: false };
+
+  // 如果是叶子节点（term）
+  if (ast.term) {
+    let matched = false;
+    // 如果这个节点的 field 匹配要删除的 key，返回 null
+    if (ast.field === key || ast.field === `-${key}`) {
+      if (value !== '') {
+        if (ast.term === value) {
+          matched = true;
+        }
+      } else {
+        matched = true;
+      }
+    }
+    if ((matched && keep) || (!matched && !keep)) {
+      return { result: ast, modified: false };
+    } else {
+      return { result: null, modified: true };
+    }
+  }
+
+  // 如果是操作符节点
+  const leftResult = rangeNodesWithKey(ast.left, key, value, keep);
+  const rightResult = rangeNodesWithKey(ast.right, key, value, keep);
+  const left = leftResult.result;
+  const right = rightResult.result;
+  const modified = leftResult.modified || rightResult.modified;
+
+  // 如果左右节点都被删除了，返回 null
+  if (!left && !right) {
+    return { result: null, modified: modified };
+  }
+
+  // 如果只有左节点被删除，返回右节点
+  if (!left && right) {
+    return { result: right, modified: modified };
+  }
+
+  // 如果只有右节点被删除，返回左节点
+  if (left && !right) {
+    return { result: left, modified: modified };
+  }
+
+  // 如果两个节点都存在，返回原结构
+  return {
+    result: {
+      ...ast,
+      left,
+      right,
+    },
+    modified,
+  };
+}
+
+export function removeLuceneField(
   query: string,
   key: string,
-  valueToRemove: string,
-): string {
-  if (typeof query !== 'string') return query;
+  value: string,
+): { result: string; modified: boolean } {
+  if (typeof query !== 'string') return { result: query, modified: false };
 
-  const regex = new RegExp(
-    `(^|\\s)(-?)${escapeRegExp(key)}:(["']?)${escapeRegExp(valueToRemove)}\\3(?=\\s|$)`,
-    'i',
-  );
+  try {
+    // 使用 AST 方法删除指定 key 的节点
+    const ast = lucene.parse(query);
+    const { result: modifiedAst, modified } = rangeNodesWithKey(
+      ast,
+      key,
+      value,
+      false,
+    );
 
-  // 直接替换，未匹配时replace()会自动返回原字符串
-  const result = query.replace(
-    regex,
-    (match, leadingSpace) => leadingSpace || '',
-  );
+    // 如果整个 AST 都被删除了，返回空字符串
+    if (!modifiedAst) {
+      return { result: '', modified: modified };
+    }
 
-  return result; // 天然满足"未匹配时原样返回"
+    // 将修改后的 AST 转换回查询字符串
+    const modifiedString = lucene.toString(modifiedAst);
+    return { result: modifiedString, modified };
+  } catch (error) {
+    // 如果解析失败，回退到原来的正则表达式方法
+    console.warn('Failed to parse Lucene query', error);
+
+    return { result: query, modified: false };
+  }
 }
 
-// 辅助函数：转义正则特殊字符
-function escapeRegExp(str: string): string {
-  if (typeof str !== 'string') {
-    return String(str);
+// 只保留指定 key 的 filter，移除其他所有字段
+export function keepOnlyLuceneField(
+  query: string,
+  keyToKeep: string,
+): { result: string } {
+  if (typeof query !== 'string') return { result: '' };
+
+  try {
+    const ast = lucene.parse(query);
+    const { result: filteredAst } = rangeNodesWithKey(ast, keyToKeep, '', true);
+
+    // 如果所有的都被删除了
+    if (!filteredAst) {
+      return { result: '' };
+    }
+
+    // 将修改后的 AST 转换回查询字符串
+    const resultString = lucene.toString(filteredAst);
+    return { result: resultString };
+  } catch (error) {
+    console.warn('Failed to parse Lucene query', error);
+    return { result: '' };
   }
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-//console.log(removeSqlField("name = 'Alice' OR name != 'Bob' AND age = 25", 'name', "'Bob'"));
-// 输出: "name = 'Alice' AND age = 25" （仅删除 name != 'Bob'）
-//console.log(removeSqlField("  name = 'Alice'   AND   AND   age = 25  ", 'name', "'Charlie'"));
-// 输出: "  name = 'Alice'   AND   AND   age = 25  " （未匹配，原样返回）
-function removeSqlField(
-  sqlWhere: string,
-  key: string,
-  valueToRemove: string,
-): string {
-  if (!sqlWhere || typeof sqlWhere !== 'string') return '';
-  if (typeof key !== 'string' || typeof valueToRemove !== 'string')
-    return sqlWhere;
-
-  // 转义正则特殊字符
-  const escapedValue = escapeRegExp(valueToRemove);
-
-  // 构建正则表达式，支持 = 和 !=
-  const exactMatchRegex = new RegExp(
-    `(?:\\b(AND|OR)\\s+)?\\b${escapeRegExp(key)}\\s*(!?=)\\s*('${escapedValue}'|"${escapedValue}"|\\b${escapedValue}\\b)(?=(\\s+(?:AND|OR)|\\s*$))`,
-    'gi',
-  );
-
-  // 检查是否存在匹配项
-  if (!exactMatchRegex.test(sqlWhere)) {
-    return sqlWhere; // 未找到匹配，原样返回
-  }
-
-  // 执行替换（保留操作符前的逻辑运算符 AND/OR）
-  let result = sqlWhere.replace(
-    exactMatchRegex,
-    (match, logicOp, operator, value) => {
-      // 如果匹配到的是 AND/OR，保留它（避免破坏 SQL 结构）
-      return logicOp ? '' : '';
-    },
-  );
-
-  // 清理残留的逻辑运算符
-  result = result
-    .replace(/^\s*(AND|OR)\s*/i, '') // 开头的 AND/OR
-    .replace(/\s*(AND|OR)\s*$/i, '') // 结尾的 AND/OR
-    .replace(/\s+(AND|OR)\s+(AND|OR)\s+/gi, ' $1 ') // 连续的 AND/OR
-    .trim();
-
-  return result || '';
 }
 
 export function DBRowJsonViewer({
@@ -275,19 +321,16 @@ export function DBRowJsonViewer({
       let removedFilterWhere = ''; // 已经移除过 filter 的 where
       let hadFilter = false;
       if (where !== '') {
-        // 如果已经有了 where，判断是否已经有了对应的 filter，如果没有，则添加连接符
-        if (whereLanguage === 'sql') {
-          removedFilterWhere = removeSqlField(where, fieldPath, value);
-          hadFilter = removedFilterWhere !== where;
-          if (!hadFilter) {
-            where += ' AND ';
-          }
-        } else {
-          removedFilterWhere = removeLuceneField(where, luceneFieldPath, value);
-          hadFilter = removedFilterWhere !== where;
-          if (!hadFilter) {
-            where += ' ';
-          }
+        where += ' AND ';
+        // 判断是否已经有了对应的 filter，如果没有，则添加连接符
+        if (whereLanguage === 'lucene') {
+          const { result, modified } = removeLuceneField(
+            where,
+            luceneFieldPath,
+            value,
+          );
+          removedFilterWhere = result;
+          hadFilter = modified;
         }
       }
 

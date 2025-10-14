@@ -732,9 +732,20 @@ function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
+  const handleSetWhere = useCallback(
+    (where: string) => {
+      setValue('where', where);
+      debouncedSubmit();
+    },
+    [debouncedSubmit, setValue],
+  );
+
   const searchFilters = useSearchPageFilterState({
     searchQuery: watch('filters') ?? undefined,
     onFilterChange: handleSetFilters,
+    where: watch('where') ?? '',
+    onWhereChange: handleSetWhere,
+    whereLanguage: watch('whereLanguage') ?? 'lucene',
   });
 
   useEffect(() => {
@@ -947,7 +958,7 @@ function DBSearchPage() {
       whereLanguage: SearchConfig['whereLanguage'];
     }) => {
       const qParams = new URLSearchParams({
-        where: where || searchedConfig.where || '',
+        where: where || '',
         whereLanguage: whereLanguage || 'sql',
         from: searchedTimeRange[0].getTime().toString(),
         to: searchedTimeRange[1].getTime().toString(),
@@ -960,7 +971,6 @@ function DBSearchPage() {
     [
       searchedConfig.filters,
       searchedConfig.select,
-      searchedConfig.where,
       searchedSource?.id,
       searchedTimeRange,
     ],
