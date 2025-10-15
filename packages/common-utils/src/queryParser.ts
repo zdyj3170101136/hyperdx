@@ -25,7 +25,8 @@ function decodeSpecialTokens(query: string): string {
 }
 
 export function parse(query: string): lucene.AST {
-  return lucene.parse(encodeSpecialTokens(query));
+  const ast = lucene.parse(encodeSpecialTokens(query));
+  return mergeImplicitTerms(ast);
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -801,3 +802,40 @@ export async function genEnglishExplanation(query: string): Promise<string> {
 
   return `Message containing ${query}`;
 }
+
+const isNodeTerm = (node: any): boolean => {
+  if (!node) return false;
+  return typeof (node as any).term === 'string';
+};
+
+// 不需要输入 \, 也能够识别空格以保持输入的美观, a b 和 a\ b 是等价的。
+// 对于查询 a b, 由一个 <implicit> node, 和左树 a, 右树 b 组成。
+// 递归将所有 <implicit> node 的左右子树组成一个新子树
+const mergeImplicitTerms = (node: any): any => {
+  if (!node) return node;
+
+  const left = mergeImplicitTerms(node.left);
+  const right = mergeImplicitTerms(node.right);
+
+  if (
+    node.operator === '<implicit>' &&
+    isNodeTerm(left) &&
+    isNodeTerm(right) &&
+    left.field === right.field &&
+    left.field === IMPLICIT_FIELD &&
+    !left.quoted &&
+    !right.quoted
+  ) {
+    return {
+      ...left,
+      term: `${left.term} ${right.term}`,
+      quoted: false,
+    };
+  }
+
+  return {
+    ...node,
+    left,
+    right,
+  };
+};
