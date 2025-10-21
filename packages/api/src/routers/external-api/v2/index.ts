@@ -4,6 +4,7 @@ import { validateUserAccessKey } from '@/middleware/auth';
 import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
+import savedSearchRouter from '@/routers/external-api/v2/savedSearch';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import rateLimiter from '@/utils/rateLimiter';
 
@@ -15,7 +16,7 @@ const rateLimiterKeyGenerator = (req: express.Request) => {
 
 const defaultRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 100, // Limit each IP to 100 requests per `window`
+  max: 10000, // Limit each IP to 100 requests per `window`
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   keyGenerator: rateLimiterKeyGenerator,
@@ -37,6 +38,13 @@ router.use(
   defaultRateLimiter,
   validateUserAccessKey,
   dashboardRouter,
+);
+
+router.use(
+  '/saved-search',
+  defaultRateLimiter,
+  validateUserAccessKey,
+  savedSearchRouter,
 );
 
 export default router;
