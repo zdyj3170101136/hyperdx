@@ -68,6 +68,7 @@ const AlertForm = ({
   loading,
   deleteLoading,
   hasSavedSearch,
+  name,
   onDelete,
   onSubmit,
   onClose,
@@ -80,6 +81,7 @@ const AlertForm = ({
   loading?: boolean;
   deleteLoading?: boolean;
   hasSavedSearch?: boolean;
+  name: string;
   onDelete: (id: string) => void;
   onSubmit: (data: Alert) => void;
   onClose: () => void;
@@ -99,6 +101,115 @@ const AlertForm = ({
     },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
+
+  const openInGrafana = () => {
+    const formData = watch();
+
+    // 获取真实的 alert name (来自 saved search 的名称)
+    const alertName = name;
+
+    // 将 HyperDX 的 labels 对象格式转换为 Grafana 的数组格式
+    // 并将 $alertname 占位符替换为真实的 alert name
+    const channelLabels = formData.channel?.labels || {};
+    const grafanaLabels = Object.entries(channelLabels).map(([key, value]) => ({
+      key,
+      value: value.replace(/\$alertname/g, alertName),
+    }));
+
+    // 构造 Grafana alert 配置
+    const grafanaConfig = {
+      name: "请下滑到底部并点击'Preview routing'",
+      labels: grafanaLabels,
+      type: 'grafana',
+      folder: {
+        title: 'Infrastructure',
+        uid: 'lOvX3lF4z',
+      },
+      queries: [
+        {
+          refId: 'A',
+          datasourceUid: 'prometheus',
+          model: {
+            refId: 'A',
+            expr: '1',
+          },
+        },
+        {
+          refId: 'B',
+          datasourceUid: '__expr__',
+          model: {
+            refId: 'B',
+            type: 'reduce',
+            datasource: {
+              uid: '__expr__',
+              type: '__expr__',
+            },
+            conditions: [
+              {
+                type: 'query',
+                evaluator: {
+                  params: [],
+                  type: 'gt',
+                },
+                operator: {
+                  type: 'and',
+                },
+                query: {
+                  params: ['B'],
+                },
+                reducer: {
+                  params: [],
+                  type: 'last',
+                },
+              },
+            ],
+            reducer: 'last',
+            expression: 'A',
+          },
+        },
+        {
+          refId: 'C',
+          datasourceUid: '__expr__',
+          model: {
+            refId: 'C',
+            type: 'threshold',
+            datasource: {
+              uid: '__expr__',
+              type: '__expr__',
+            },
+            conditions: [
+              {
+                type: 'query',
+                evaluator: {
+                  params: [0],
+                  type: 'gt',
+                },
+                operator: {
+                  type: 'and',
+                },
+                query: {
+                  params: ['C'],
+                },
+                reducer: {
+                  params: [],
+                  type: 'last',
+                },
+              },
+            ],
+            expression: 'B',
+          },
+        },
+      ],
+      condition: 'C',
+    };
+
+    // URL encode 配置并构造完整 URL
+    const encodedConfig = encodeURIComponent(JSON.stringify(grafanaConfig));
+    const grafanaUrl = `http://grafana.k8s.metabit-trading.com/alerting/new/alerting?orgId=1&defaults=${encodedConfig}`;
+
+    // 在新标签页中打开
+    window.open(grafanaUrl, '_blank');
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -205,6 +316,9 @@ const AlertForm = ({
         <Group gap="xs">
           <Button variant="light" color="gray" onClick={onClose}>
             Cancel
+          </Button>
+          <Button variant="light" color="gray" onClick={openInGrafana}>
+            Preview routing
           </Button>
           <Button variant="light" type="submit" loading={loading}>
             {defaultValues
@@ -381,6 +495,7 @@ export const DBSearchPageAlertModal = ({
           // 移除 tab, alertname one to one savedsearch
           key={activeIndex}
           hasSavedSearch={!!savedSearch}
+          name={name}
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
