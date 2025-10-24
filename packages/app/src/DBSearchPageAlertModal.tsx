@@ -52,6 +52,7 @@ const SavedSearchAlertFormSchema = z
     threshold: z.number().int().min(1),
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
+    orgId: z.string().optional(),
   })
   .passthrough();
 
@@ -98,25 +99,48 @@ const AlertForm = ({
         type: 'webhook',
         webhookId: '',
       },
+      orgId: undefined, // 不设置默认值，让用户选择
     },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
+  const selectedOrgId = watch('orgId');
+  const { data: grafanaDatasources } = api.useGrafanaDatasources(selectedOrgId);
+
   const openInGrafana = () => {
     const formData = watch();
 
-    // 获取真实的 alert name (来自 saved search 的名称)
     const alertName = name;
+    const orgId = formData.orgId;
 
-    // 将 HyperDX 的 labels 对象格式转换为 Grafana 的数组格式
-    // 并将 $alertname 占位符替换为真实的 alert name
+    if (!orgId) {
+      notifications.show({
+        color: 'red',
+        title: 'Grafana org required',
+        message:
+          'Please select a Grafana organization before previewing routing.',
+      });
+      return;
+    }
+
+    let datasourceUid = 'prometheus';
+
+    if (Array.isArray(grafanaDatasources)) {
+      const prometheusDatasource = grafanaDatasources.find(
+        (datasource: any) => datasource.type === 'prometheus',
+      );
+
+      if (prometheusDatasource?.uid) {
+        datasourceUid = prometheusDatasource.uid;
+      }
+    }
+
     const channelLabels = formData.channel?.labels || {};
     const grafanaLabels = Object.entries(channelLabels).map(([key, value]) => ({
       key,
       value: value.replace(/\$alertname/g, alertName),
     }));
 
-    // 构造 Grafana alert 配置
     const grafanaConfig = {
       name: "请下滑到底部并点击'Preview routing'",
       labels: grafanaLabels,
@@ -128,7 +152,7 @@ const AlertForm = ({
       queries: [
         {
           refId: 'A',
-          datasourceUid: 'prometheus',
+          datasourceUid,
           model: {
             refId: 'A',
             expr: '1',
@@ -203,11 +227,9 @@ const AlertForm = ({
       condition: 'C',
     };
 
-    // URL encode 配置并构造完整 URL
     const encodedConfig = encodeURIComponent(JSON.stringify(grafanaConfig));
-    const grafanaUrl = `http://grafana.k8s.metabit-trading.com/alerting/new/alerting?orgId=1&defaults=${encodedConfig}`;
+    const grafanaUrl = `http://grafana.k8s.metabit-trading.com/alerting/new/alerting?orgId=${orgId}&defaults=${encodedConfig}`;
 
-    // 在新标签页中打开
     window.open(grafanaUrl, '_blank');
   };
 

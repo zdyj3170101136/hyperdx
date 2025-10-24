@@ -69,6 +69,9 @@ export interface IAlert {
     until: Date;
   };
 
+  // Organization ID for AlertManager
+  orgId?: string;
+
   firedAt: Date;
   resolvedAt: Date;
 }
@@ -155,6 +158,10 @@ const AlertSchema = new Schema<IAlert>(
         },
         required: false,
       },
+    },
+    orgId: {
+      type: String,
+      required: false,
     },
   },
   {

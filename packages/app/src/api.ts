@@ -366,5 +366,55 @@ const api = {
         }).json() as Promise<{ success: boolean; error?: string }>,
     });
   },
+  useGrafanaOrgs() {
+    return useQuery({
+      queryKey: ['grafana-orgs'],
+      queryFn: async () => {
+        try {
+          return await hdxServer('grafana/orgs', {
+            method: 'GET',
+          }).json();
+        } catch (error: any) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Failed to fetch Grafana orgs';
+          throw new Error(message);
+        }
+      },
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+    });
+  },
+  useGrafanaDatasources(orgId?: string) {
+    return useQuery({
+      queryKey: ['grafana-datasources', orgId],
+      queryFn: async () => {
+        const params = new URLSearchParams();
+        if (orgId) {
+          params.set('orgId', orgId);
+        }
+
+        const url = params.toString()
+          ? `grafana/datasources?${params.toString()}`
+          : 'grafana/datasources';
+
+        try {
+          return await hdxServer(url, {
+            method: 'GET',
+          }).json();
+        } catch (error: any) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Failed to fetch Grafana datasources';
+          throw new Error(message);
+        }
+      },
+      enabled: orgId !== undefined && orgId !== '',
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+    });
+  },
 };
 export default api;

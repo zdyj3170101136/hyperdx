@@ -20,6 +20,8 @@ import api from '@/api';
 
 import { CreateWebhookForm } from '../TeamPage';
 
+import OrgSelector from './OrgSelector';
+
 type Webhook = {
   _id: string;
   name: string;
@@ -121,12 +123,31 @@ export const AlertChannelForm = ({
           control={control}
           name={`${namePrefix}channel.webhookId`}
         />
+        <OrgIdInput control={control} namePrefix={namePrefix} />
         <LabelsInput control={control} namePrefix={namePrefix} />
       </Stack>
     );
   }
 
   return null;
+};
+
+const OrgIdInput = ({
+  control,
+  namePrefix = '',
+}: {
+  control: Control<any>;
+  namePrefix?: string;
+}) => {
+  return (
+    <OrgSelector
+      control={control}
+      name={`${namePrefix}orgId`}
+      label="Grafana Organization"
+      placeholder="Select organization"
+      size="xs"
+    />
+  );
 };
 
 const LabelsInput = ({
