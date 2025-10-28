@@ -142,7 +142,7 @@ const AlertForm = ({
     }));
 
     const grafanaConfig = {
-      name: "请下滑到底部并点击'Preview routing'",
+      name: `${name}`,
       labels: grafanaLabels,
       type: 'grafana',
       folder: {
@@ -339,7 +339,12 @@ const AlertForm = ({
           <Button variant="light" color="gray" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="light" color="gray" onClick={openInGrafana}>
+          <Button
+            variant="light"
+            color="gray"
+            onClick={openInGrafana}
+            title="打开后请在 Grafana 页面下滑到底部点击 'Preview routing'"
+          >
             Preview routing
           </Button>
           <Button variant="light" type="submit" loading={loading}>
@@ -517,7 +522,7 @@ export const DBSearchPageAlertModal = ({
           // 移除 tab, alertname one to one savedsearch
           key={activeIndex}
           hasSavedSearch={!!savedSearch}
-          name={name}
+          name={name || savedSearch?.name || ''}
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
