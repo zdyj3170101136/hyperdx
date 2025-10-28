@@ -173,6 +173,7 @@ export const notifyChannel = async ({
   message,
   team,
   labels,
+  orgId,
 }: {
   channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
   id: string;
@@ -188,6 +189,7 @@ export const notifyChannel = async ({
     id: string;
   };
   labels: Record<string, string>;
+  orgId: string;
 }) => {
   switch (channel) {
     case 'webhook': {
@@ -210,7 +212,7 @@ export const notifyChannel = async ({
       } else if (webhook?.service === 'generic') {
         await handleSendGenericWebhook(webhook, message);
       } else if (webhook?.service === 'alertmanager') {
-        await handleSendAlertManagerWebhook(webhook, message, labels);
+        await handleSendAlertManagerWebhook(webhook, message, labels, orgId);
       }
       break;
     }
@@ -256,6 +258,7 @@ const handleSendAlertManagerWebhook = async (
     alertEndsAt: Date;
   },
   labels: Record<string, string>,
+  orgId: string,
 ) => {
   if (!webhook.url) {
     throw new Error('Webhook URL is not set');
@@ -280,10 +283,12 @@ const handleSendAlertManagerWebhook = async (
       annotations: {
         body: message.body,
         hdx_link: message.hdxLink,
+        __orgId__: orgId,
       },
     },
   ];
 
+  console.log(JSON.stringify(alertManagerPayload));
   try {
     const response = await fetch(webhook.url, {
       method: 'POST',
@@ -471,6 +476,7 @@ export const renderAlertTemplate = async ({
   alertStartsAt,
   alertEndsAt,
   labels,
+  orgId,
 }: {
   raw: string;
   metadata: Metadata;
@@ -483,6 +489,7 @@ export const renderAlertTemplate = async ({
   alertStartsAt: Date;
   alertEndsAt: Date;
   labels: Record<string, string>;
+  orgId: string;
 }) => {
   const { alert, dashboard, endTime, group, savedSearch, source, startTime } =
     view;
@@ -546,6 +553,7 @@ export const renderAlertTemplate = async ({
           },
           team,
           labels,
+          orgId,
         });
       },
     );
@@ -763,6 +771,7 @@ const fireChannelEvent = async ({
     alertStartsAt,
     alertEndsAt,
     labels: (alert.channel as any)?.labels,
+    orgId: alert.orgId ? alert.orgId : '1',
   });
 };
 

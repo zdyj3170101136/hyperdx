@@ -234,6 +234,7 @@ export type ExternalAlert = {
   savedSearch?: string;
   groupBy?: string;
   silenced?: any;
+  orgId?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -261,6 +262,7 @@ export function translateAlertDocumentToExternalAlert(
     savedSearch: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
     silenced: alertObj.silenced,
+    orgId: alertObj.orgId,
     createdAt: alertObj.createdAt.toISOString(),
     updatedAt: alertObj.updatedAt.toISOString(),
   };

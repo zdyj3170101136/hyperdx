@@ -36,6 +36,9 @@ export type AlertInput = {
   dashboardId?: string;
   tileId?: string;
 
+  // Organization ID for AlertManager
+  orgId?: string;
+
   // Silenced
   silenced?: {
     by?: ObjectId;
@@ -65,6 +68,8 @@ const makeAlert = (alert: AlertInput): Partial<IAlert> => {
     // Chart alerts
     dashboard: alert.dashboardId as unknown as ObjectId,
     tileId: alert.tileId,
+    // Organization ID for AlertManager
+    orgId: alert.orgId,
   };
 };
 

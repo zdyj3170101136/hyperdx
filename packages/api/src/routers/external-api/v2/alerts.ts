@@ -78,6 +78,10 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         silenced:
  *           type: boolean
  *           nullable: true
+ *         orgId:
+ *           type: string
+ *           example: "1"
+ *           description: "Organization ID for AlertManager"
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -131,6 +135,10 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         message:
  *           type: string
  *           example: "Test Alert Message"
+ *         orgId:
+ *           type: string
+ *           example: "1"
+ *           description: "Organization ID for AlertManager"
  *
  *     UpdateAlertRequest:
  *       type: object
@@ -170,6 +178,10 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         message:
  *           type: string
  *           example: "Updated message"
+ *         orgId:
+ *           type: string
+ *           example: "2"
+ *           description: "Organization ID for AlertManager"
  *
  *     AlertResponse:
  *       type: object

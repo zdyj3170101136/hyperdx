@@ -274,6 +274,7 @@ export const AlertBaseSchema = z.object({
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
+  orgId: z.string().optional(),
   silenced: z
     .object({
       by: z.string(),

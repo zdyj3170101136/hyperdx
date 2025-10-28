@@ -241,5 +241,6 @@ export const alertSchema = z
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
+    orgId: z.string().optional(),
   })
   .and(zSavedSearchAlert.or(zTileAlert));
