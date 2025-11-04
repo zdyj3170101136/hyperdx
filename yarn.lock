@@ -4479,6 +4479,7 @@ __metadata:
     connect-mongo: "npm:^4.6.0"
     cors: "npm:^2.8.5"
     cron: "npm:^3.5.0"
+    csv-parse: "npm:^6.1.0"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     esbuild: "npm:^0.25.5"
@@ -14136,6 +14137,13 @@ __metadata:
   version: 4.16.3
   resolution: "csv-parse@npm:4.16.3"
   checksum: 10c0/40771fda105b10c3e44551fa4dbeab462315400deb572f2918c19d5848addd95ea3479aaaeaaf3bbd9235593a6d798dd90b9e6ba5c4ce570979bafc4bb1ba5f0
+  languageName: node
+  linkType: hard
+
+"csv-parse@npm:^6.1.0":
+  version: 6.1.0
+  resolution: "csv-parse@npm:6.1.0"
+  checksum: 10c0/098c69e5b3b50d4bf65401dc3b2f1bd66f272fe985be99d7cb9f14ad33a7218f0f5695a03a82720cf47141d242bf44b4836ff32900751bef087057bc6e6715a2
   languageName: node
   linkType: hard
 

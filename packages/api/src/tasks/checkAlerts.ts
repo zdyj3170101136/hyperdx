@@ -9,6 +9,8 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { formatDate } from '@hyperdx/common-utils/dist/utils';
+// eslint-disable-next-line n/no-extraneous-import
+import { parse as parseCSV } from 'csv-parse/sync';
 import * as fns from 'date-fns';
 import fnv from 'fnv-plus';
 import Handlebars, { HelperOptions } from 'handlebars';
@@ -654,25 +656,31 @@ export const renderAlertTemplate = async ({
       },
     };
 
-    let lines = raw.split('\n');
-    // 找到时间戳字段的索引
-    const headers = lines[0].split(',').map(field => field.slice(1, -1));
+    let records = parseCSV(raw, {
+      relaxColumnCount: true,
+      skipEmptyLines: true,
+    });
+
+    const headers = Array.isArray(records[0]) ? records[0] : [];
     const timestampIndex = headers.findIndex(header =>
       header.toLowerCase().includes('timestamp'),
     );
 
-    lines = lines.map(line =>
-      line
-        .split(',')
+    const dataRowCount = records.length - 1; // Subtract header row
+    let rawLimit = dataRowCount;
+    if (dataRowCount > messageLimit) {
+      rawLimit = messageLimit;
+      // +1 to include header
+      records = records.slice(0, rawLimit + 1);
+    }
+
+    const renderedLines = records.map((record: string[]) =>
+      record
         .map((field, index) => {
-          // 移除首尾的 “, 以及 csv 对 ” 的转意
-          field = field.slice(1, -1);
-          field = field.replace(/""/g, '"');
-          // 如果是时间戳字段，使用 formatDate
           if (index === timestampIndex) {
             const date = new Date(field);
             if (isNaN(date.getTime())) {
-              return field; // 解析失败，原样返回
+              return field;
             }
             let formattedDate = date.toLocaleTimeString('en-GB', {
               hour: '2-digit',
@@ -689,7 +697,7 @@ export const renderAlertTemplate = async ({
         .join(' | '),
     );
     truncatedResults = truncateString(
-      lines
+      renderedLines
         .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
         .join('\n-----------------------------\n'),
       2500,
@@ -715,7 +723,7 @@ export const renderAlertTemplate = async ({
     }
 
     // 检查是否有实际数据（除了表头）
-    const hasActualData = lines.length > 1;
+    const hasActualData = records.length > 1;
 
     query = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval} against the monitored query:\n${timeRangeMessage}\n`;
     if (hasActualData) {
@@ -1015,15 +1023,11 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     let alertState = AlertState.OK;
 
     let event = {};
-    const dataRowCount = raw.split('\n').length - 2; // -2 because of the header and the last empty line
-    let rawLimit = dataRowCount;
-    if (dataRowCount > messageLimit) {
-      rawLimit = messageLimit;
-    }
-    raw = raw
-      .split('\n')
-      .slice(0, rawLimit + 1)
-      .join('\n'); // messageLimit includes the header and messageLimit rows of data
+    const records = parseCSV(raw, {
+      relaxColumnCount: true,
+      skipEmptyLines: true,
+    });
+    const dataRowCount = records.length - 1; // Subtract header row
     if (
       doesExceedThreshold(alert.thresholdType, alert.threshold, dataRowCount)
     ) {
