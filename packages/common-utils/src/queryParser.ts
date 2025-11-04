@@ -26,7 +26,10 @@ function decodeSpecialTokens(query: string): string {
 
 export function parse(query: string): lucene.AST {
   const ast = lucene.parse(encodeSpecialTokens(query));
-  return mergeImplicitTerms(ast);
+  const mergedAst = mergeImplicitTerms(ast);
+  const luceneString = lucene.toString(mergedAst);
+  console.log('[mergeImplicitTerms] Lucene string after merge:', luceneString);
+  return mergedAst;
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -881,6 +884,8 @@ const mergeImplicitTerms = (node: any): any => {
     return {
       ...candidate.right,
       left: liftedLeft,
+      // Preserve parenthesized flag from candidate if it exists
+      parenthesized: candidate.parenthesized ?? candidate.right.parenthesized,
     };
   }
 
