@@ -803,9 +803,51 @@ export async function genEnglishExplanation(query: string): Promise<string> {
   return `Message containing ${query}`;
 }
 
-const isNodeTerm = (node: any): boolean => {
+const isNodeTerm = (
+  node: any,
+): node is {
+  field: string;
+  term: string;
+  quoted?: boolean;
+} => {
   if (!node) return false;
-  return typeof (node as any).term === 'string';
+  return typeof node.term === 'string';
+};
+
+const collectImplicitTerms = (node: any): any[] | null => {
+  if (!node) {
+    return null;
+  }
+
+  if (isNodeTerm(node)) {
+    if (node.field === IMPLICIT_FIELD && !node.quoted) {
+      return [node];
+    }
+    return null;
+  }
+
+  if (node.operator !== '<implicit>') {
+    return null;
+  }
+
+  const leftTerms = collectImplicitTerms(node.left);
+  const rightTerms = collectImplicitTerms(node.right);
+
+  if (!leftTerms || !rightTerms) {
+    return null;
+  }
+
+  const allTerms = [...leftTerms, ...rightTerms];
+
+  const hasSameField = allTerms.every(
+    term => term.field === IMPLICIT_FIELD && !term.quoted,
+  );
+
+  if (!hasSameField) {
+    return null;
+  }
+
+  return allTerms;
 };
 
 // 不需要输入 \, 也能够识别空格以保持输入的美观, a b 和 a\ b 是等价的。
@@ -817,25 +859,43 @@ const mergeImplicitTerms = (node: any): any => {
   const left = mergeImplicitTerms(node.left);
   const right = mergeImplicitTerms(node.right);
 
-  if (
-    node.operator === '<implicit>' &&
-    isNodeTerm(left) &&
-    isNodeTerm(right) &&
-    left.field === right.field &&
-    left.field === IMPLICIT_FIELD &&
-    !left.quoted &&
-    !right.quoted
-  ) {
-    return {
-      ...left,
-      term: `${left.term} ${right.term}`,
-      quoted: false,
-    };
-  }
-
-  return {
+  const candidate = {
     ...node,
     left,
     right,
   };
+
+  if (
+    candidate.operator === '<implicit>' &&
+    candidate.right &&
+    typeof candidate.right === 'object' &&
+    candidate.right.operator &&
+    candidate.right.operator !== '<implicit>'
+  ) {
+    const liftedLeft = mergeImplicitTerms({
+      operator: '<implicit>',
+      left: candidate.left,
+      right: candidate.right.left,
+    });
+
+    return {
+      ...candidate.right,
+      left: liftedLeft,
+    };
+  }
+
+  if (candidate.operator === '<implicit>') {
+    const terms = collectImplicitTerms(candidate);
+
+    if (terms && terms.length > 1) {
+      const [firstTerm] = terms;
+      return {
+        ...firstTerm,
+        term: terms.map(term => term.term).join(' '),
+        quoted: false,
+      };
+    }
+  }
+
+  return candidate;
 };
