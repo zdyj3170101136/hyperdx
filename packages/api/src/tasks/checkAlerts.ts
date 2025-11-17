@@ -245,6 +245,34 @@ const handleSendSlackWebhook = async (
   });
 };
 
+import { fetchGrafanaOrgs, type GrafanaOrg } from '@/utils/grafana';
+
+// Cache for all Grafana orgs with TTL (5 minutes)
+let cachedOrgs: GrafanaOrg[] | null = null;
+let cacheTimestamp: number = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get all Grafana orgs with caching (5 minute TTL)
+ */
+async function getGrafanaOrgsCached(): Promise<GrafanaOrg[]> {
+  const now = Date.now();
+
+  // Return cached orgs if still valid
+  if (cachedOrgs && now - cacheTimestamp < CACHE_TTL_MS) {
+    return cachedOrgs;
+  }
+
+  // Cache expired or not set, fetch from API
+  const orgs = await fetchGrafanaOrgs();
+
+  // Update cache
+  cachedOrgs = orgs;
+  cacheTimestamp = now;
+
+  return orgs;
+}
+
 const handleSendAlertManagerWebhook = async (
   webhook: IWebhook,
   message: {
@@ -262,6 +290,23 @@ const handleSendAlertManagerWebhook = async (
 ) => {
   if (!webhook.url) {
     throw new Error('Webhook URL is not set');
+  }
+
+  // Fetch Grafana org by orgId from cached orgs list (5 minute TTL)
+  let scopeOrgId = '';
+  try {
+    const orgs = await getGrafanaOrgsCached();
+    const grafanaOrg = orgs.find(
+      o => o.id.toString() === orgId || o.id === parseInt(orgId, 10),
+    );
+    if (!grafanaOrg) {
+      throw new Error(
+        `Grafana org with id ${orgId} not found or could not be fetched`,
+      );
+    }
+    scopeOrgId = grafanaOrg.name;
+  } catch (error: any) {
+    throw new Error(`Failed to get grafana org: ${error}`);
   }
 
   // AlertManager 格式的告警信息
@@ -284,6 +329,7 @@ const handleSendAlertManagerWebhook = async (
         message: message.message,
         query: message.query,
         sample: message.sample,
+        alertmanager: webhook.name,
         hdx_link: message.hdxLink,
         __orgId__: orgId,
       },
@@ -292,11 +338,16 @@ const handleSendAlertManagerWebhook = async (
 
   console.log(JSON.stringify(alertManagerPayload));
   try {
+    // Build headers: X-Scope-OrgID for multi-tenant Grafana AlertManager,
+    // using the org.id from Grafana API if available, otherwise use orgId
+    // plus any custom headers from webhook config
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Scope-OrgID': scopeOrgId, // Grafana multi-tenant header (from org.id if found)
+    } as Record<string, string>;
     const response = await fetch(webhook.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(alertManagerPayload),
     });
 
