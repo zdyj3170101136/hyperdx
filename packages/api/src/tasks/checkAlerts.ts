@@ -180,7 +180,9 @@ export const notifyChannel = async ({
   message: {
     hdxLink: string;
     title: string;
-    body: string;
+    query: string;
+    sample: string;
+    message: string;
     alertname: string;
     alertStartsAt: Date;
     alertEndsAt: Date;
@@ -207,11 +209,7 @@ export const notifyChannel = async ({
       if (!webhook) {
         throw new Error('Webhook not found');
       }
-      if (webhook?.service === 'slack') {
-        await handleSendSlackWebhook(webhook, message);
-      } else if (webhook?.service === 'generic') {
-        await handleSendGenericWebhook(webhook, message);
-      } else if (webhook?.service === 'alertmanager') {
+      if (webhook?.service === 'alertmanager') {
         await handleSendAlertManagerWebhook(webhook, message, labels, orgId);
       }
       break;
@@ -252,7 +250,9 @@ const handleSendAlertManagerWebhook = async (
   message: {
     hdxLink: string;
     title: string;
-    body: string;
+    query: string;
+    message: string;
+    sample: string;
     alertname: string;
     alertStartsAt: Date;
     alertEndsAt: Date;
@@ -281,7 +281,9 @@ const handleSendAlertManagerWebhook = async (
       startsAt: message.alertStartsAt.toISOString(),
       endsAt: message.alertEndsAt.toISOString(),
       annotations: {
-        body: message.body,
+        message: message.message,
+        query: message.query,
+        sample: message.sample,
         hdx_link: message.hdxLink,
         __orgId__: orgId,
       },
@@ -521,7 +523,11 @@ export const renderAlertTemplate = async ({
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
   _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
   const hb = PromisedHandlebars(Handlebars);
-  const registerHelpers = (rawTemplateBody: string) => {
+  const registerHelpers = (
+    rawTemplateBody: string,
+    query: string,
+    sample: string,
+  ) => {
     hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
     hb.registerHelper(
@@ -546,7 +552,9 @@ export const renderAlertTemplate = async ({
           message: {
             hdxLink: buildAlertMessageTemplateHdxLink(view),
             title,
-            body: renderedBody,
+            query: query,
+            sample: sample,
+            message: renderedBody,
             alertname: savedSearch.name,
             alertStartsAt,
             alertEndsAt,
@@ -565,7 +573,8 @@ export const renderAlertTemplate = async ({
     isUTC: true,
   })})`;
   let rawTemplateBody;
-
+  let query = '';
+  let truncatedResults = '';
   // TODO: support advanced routing with template engine
   // users should be able to use '@' syntax to trigger alerts
   if (alert.source === AlertSource.SAVED_SEARCH) {
@@ -594,7 +603,6 @@ export const renderAlertTemplate = async ({
       },
     };
 
-    let truncatedResults = '';
     let lines = raw.split('\n');
     // 找到时间戳字段的索引
     const headers = lines[0].split(',').map(field => field.slice(1, -1));
@@ -658,16 +666,14 @@ export const renderAlertTemplate = async ({
     // 检查是否有实际数据（除了表头）
     const hasActualData = lines.length > 1;
 
+    query = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval} against the monitored query:\n${timeRangeMessage}\n`;
     if (hasActualData) {
-      rawTemplateBody = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval} against the monitored query:\n${timeRangeMessage}\n
-${targetTemplate}
+      truncatedResults = `
 \`\`\`
 ${truncatedResults}
 \`\`\``;
     } else {
-      // 只有表头，不显示 truncatedResults
-      rawTemplateBody = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval} against the monitored query:\n${timeRangeMessage}\n
-${targetTemplate}`;
+      truncatedResults = '';
     }
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -678,13 +684,9 @@ ${targetTemplate}`;
   }
 
   // render the template
-  if (rawTemplateBody) {
-    registerHelpers(rawTemplateBody);
-    const compiledTemplate = hb.compile(rawTemplateBody);
-    return compiledTemplate(view);
-  }
-
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  registerHelpers(targetTemplate, query, truncatedResults);
+  const compiledTemplate = hb.compile(targetTemplate);
+  return compiledTemplate(view);
 };
 // ------------------------------------------------------------
 
