@@ -595,10 +595,6 @@ export const renderAlertTemplate = async ({
         // render body template
         const renderedBody = _hb.compile(rawTemplateBody)(view);
 
-        if (!savedSearch) {
-          throw new Error('SavedSearch not found');
-        }
-
         await notifyChannel({
           channel,
           id: renderedId,
@@ -608,7 +604,7 @@ export const renderAlertTemplate = async ({
             query: query,
             sample: sample,
             message: renderedBody,
-            alertname: savedSearch.name,
+            alertname: alert.name,
             alertStartsAt,
             alertEndsAt,
           },
@@ -628,118 +624,88 @@ export const renderAlertTemplate = async ({
   let rawTemplateBody;
   let query = '';
   let truncatedResults = '';
-  // TODO: support advanced routing with template engine
-  // users should be able to use '@' syntax to trigger alerts
-  if (alert.source === AlertSource.SAVED_SEARCH) {
-    if (savedSearch == null) {
-      throw new Error(`Source is ${alert.source} but savedSearch is null`);
-    }
-    if (source == null) {
-      throw new Error(`Source ID is ${alert.source} but source is null`);
-    }
-    // TODO: show group + total count for group-by alerts
-    // fetch sample logs
-    const chartConfig: ChartConfigWithOptDateRange = {
-      connection: '', // no need for the connection id since clickhouse client is already initialized
-      displayType: DisplayType.Search,
-      dateRange: [startTime, endTime],
-      from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      implicitColumnExpression: source.implicitColumnExpression,
-      timestampValueExpression: source.timestampValueExpression,
-      orderBy: savedSearch.orderBy,
-      limit: {
-        limit: 5,
-        offset: 0,
-      },
-    };
+  let records = parseCSV(raw, {
+    relaxColumnCount: true,
+    skipEmptyLines: true,
+  });
 
-    let records = parseCSV(raw, {
-      relaxColumnCount: true,
-      skipEmptyLines: true,
-    });
+  const headers = Array.isArray(records[0]) ? records[0] : [];
+  const timestampIndex = headers.findIndex(header =>
+    header.toLowerCase().includes('timestamp'),
+  );
 
-    const headers = Array.isArray(records[0]) ? records[0] : [];
-    const timestampIndex = headers.findIndex(header =>
-      header.toLowerCase().includes('timestamp'),
-    );
+  const dataRowCount = records.length - 1; // Subtract header row
+  let rawLimit = dataRowCount;
+  if (dataRowCount > messageLimit) {
+    rawLimit = messageLimit;
+    // +1 to include header
+    records = records.slice(0, rawLimit + 1);
+  }
 
-    const dataRowCount = records.length - 1; // Subtract header row
-    let rawLimit = dataRowCount;
-    if (dataRowCount > messageLimit) {
-      rawLimit = messageLimit;
-      // +1 to include header
-      records = records.slice(0, rawLimit + 1);
-    }
-
-    const renderedLines = records.map((record: string[]) =>
-      record
-        .map((field, index) => {
-          if (index === timestampIndex) {
-            const date = new Date(field);
-            if (isNaN(date.getTime())) {
-              return field;
-            }
-            let formattedDate = date.toLocaleTimeString('en-GB', {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: false,
-              timeZone: 'UTC',
-            });
-            formattedDate += ' UTC';
-            return formattedDate;
+  const renderedLines = records.map((record: string[]) =>
+    record
+      .map((field, index) => {
+        if (index === timestampIndex) {
+          const date = new Date(field);
+          if (isNaN(date.getTime())) {
+            return field;
           }
-          return field;
-        })
-        .join(' | '),
-    );
-    truncatedResults = truncateString(
-      renderedLines
-        .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
-        .join('\n-----------------------------\n'),
-      2500,
-    );
+          let formattedDate = date.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'UTC',
+          });
+          formattedDate += ' UTC';
+          return formattedDate;
+        }
+        return field;
+      })
+      .join(' | '),
+  );
+  truncatedResults = truncateString(
+    renderedLines
+      .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+      .join('\n-----------------------------\n'),
+    2500,
+  );
 
-    // 检查是否是 resolved 请求（alert_start_at 等于 alert_end_at）
-    const isResolvedAlert = alertStartsAt.getTime() === alertEndsAt.getTime();
+  // 检查是否是 resolved 请求（alert_start_at 等于 alert_end_at）
+  const isResolvedAlert = alertStartsAt.getTime() === alertEndsAt.getTime();
 
-    // 根据是否是 resolved 请求来调整阈值描述
-    let thresholdDescription = '';
-    if (isResolvedAlert) {
-      // resolved 请求：阈值逻辑反转
-      thresholdDescription =
-        alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'Less than'
-          : 'More than or exactly';
-    } else {
-      // 正常告警请求
-      thresholdDescription =
-        alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'More than or exactly'
-          : 'Less than';
-    }
+  // 根据是否是 resolved 请求来调整阈值描述
+  let thresholdDescription = '';
+  if (isResolvedAlert) {
+    // resolved 请求：阈值逻辑反转
+    thresholdDescription =
+      alert.thresholdType === AlertThresholdType.ABOVE
+        ? 'Less than'
+        : 'More than or exactly';
+  } else {
+    // 正常告警请求
+    thresholdDescription =
+      alert.thresholdType === AlertThresholdType.ABOVE
+        ? 'More than or exactly'
+        : 'Less than';
+  }
 
-    // 检查是否有实际数据（除了表头）
-    const hasActualData = records.length > 1;
+  // 检查是否有实际数据（除了表头）
+  const hasActualData = records.length > 1;
 
-    query = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval} against the monitored query:\n${timeRangeMessage}\n`;
-    if (hasActualData) {
-      truncatedResults = `
+  query = `${thresholdDescription} ${alert.threshold} log events matched in the last ${alert.interval}:\n${timeRangeMessage}\n`;
+  if (hasActualData) {
+    truncatedResults = `
 \`\`\`
 ${truncatedResults}
 \`\`\``;
-    } else {
-      truncatedResults = '';
-    }
-  } else if (alert.source === AlertSource.TILE) {
-    if (dashboard == null) {
-      throw new Error(`Source is ${alert.source} but dashboard is null`);
-    }
-    rawTemplateBody = `${alert.threshold}\n${timeRangeMessage}
-${targetTemplate}`;
+  } else {
+    truncatedResults = '';
+  }
+  // TODO: support advanced routing with template engine
+  // users should be able to use '@' syntax to trigger alerts
+  if (alert.source === AlertSource.TILE) {
+    query += `*${dataRowCount} sub-group is in the triggered state. Sample of sub-group:*\n`;
   }
 
   // render the template
@@ -954,11 +920,10 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             dateRangeEndInclusive: false,
             displayType: firstTile.config.displayType,
             from: source.from,
-            granularity: `${windowSizeInMins} minute`,
             groupBy: firstTile.config.groupBy,
             implicitColumnExpression: source.implicitColumnExpression,
             metricTables: source.metricTables,
-            select: firstTile.config.select,
+            select: `count() as Value`,
             timestampValueExpression: source.timestampValueExpression,
             where: firstTile.config.where,
             seriesReturnType: firstTile.config.seriesReturnType,
@@ -993,6 +958,20 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     const metadata = getMetadata(clickhouseClient);
     const query = await renderChartConfig(chartConfig, metadata);
 
+    if (alert.source === AlertSource.TILE) {
+      // 在 chartConfig 中，count() 在 groupBy 字段的前面
+      // 此处移动位置
+      query.sql = query.sql.replace(
+        /SELECT\s+(.*?)\s+FROM/s,
+        `SELECT ${chartConfig.groupBy}, count() as Value FROM`,
+      );
+      query.sql += ` HAVING ${
+        alert.thresholdType === AlertThresholdType.ABOVE
+          ? `count() >= ${alert.threshold}`
+          : `count() < ${alert.threshold}`
+      }`;
+      query.sql += ` ORDER BY count() DESC`;
+    }
     const queryStart = new Date();
     let raw = '';
     try {
@@ -1028,10 +1007,19 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       skipEmptyLines: true,
     });
     const dataRowCount = records.length - 1; // Subtract header row
-    if (
-      doesExceedThreshold(alert.thresholdType, alert.threshold, dataRowCount)
-    ) {
-      alertState = AlertState.ALERT;
+    if (alert.source === AlertSource.SAVED_SEARCH) {
+      if (
+        doesExceedThreshold(alert.thresholdType, alert.threshold, dataRowCount)
+      ) {
+        alertState = AlertState.ALERT;
+      }
+    } else {
+      if (dataRowCount >= 1) {
+        alertState = AlertState.ALERT;
+      }
+    }
+
+    if (alertState === AlertState.ALERT) {
       event = {
         alert,
         attributes: {}, // FIXME: support attributes (logs + resources ?)

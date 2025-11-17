@@ -98,7 +98,7 @@ export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
 };
 
 export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
-  // Exclude 1m
+  '1m',
   '5m',
   '15m',
   '30m',

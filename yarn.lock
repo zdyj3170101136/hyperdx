@@ -14154,6 +14154,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"csv-stringify@npm:^6.6.0":
+  version: 6.6.0
+  resolution: "csv-stringify@npm:6.6.0"
+  checksum: 10c0/2e5b14ff1e434aba7b8cae74faa0329c1d967654820f2ae3f358a660b5887ab623224ed8eb7f3ab6d0f7342663c965ca079ca420b6046210709f72e8aec87d94
+  languageName: node
+  linkType: hard
+
 "csv@npm:^5.5.3":
   version: 5.5.3
   resolution: "csv@npm:5.5.3"
@@ -18266,6 +18273,7 @@ __metadata:
     "@typescript-eslint/eslint-plugin": "npm:^8.7.0"
     "@typescript-eslint/parser": "npm:^8.7.0"
     concurrently: "npm:^9.1.2"
+    csv-stringify: "npm:^6.6.0"
     dotenv: "npm:^16.4.7"
     dotenv-cli: "npm:^8.0.0"
     dotenv-expand: "npm:^12.0.1"
