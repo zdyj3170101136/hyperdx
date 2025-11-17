@@ -1,6 +1,7 @@
 import express from 'express';
 
 import logger from '@/utils/logger';
+import { fetchGrafanaOrgs } from '@/utils/grafana';
 
 const router = express.Router();
 
@@ -20,24 +21,7 @@ async function fetchGrafana<T>(path: string, headers: Record<string, string>) {
 
 router.get('/orgs', async (_req, res) => {
   try {
-    const username = process.env.GRAFANA_USER;
-    const token = process.env.GRAFANA_TOKEN;
-
-    if (!username || !token) {
-      return res.status(500).json({
-        error: 'Grafana credentials not configured',
-      });
-    }
-
-    const credentials = Buffer.from(`${username}:${token}`).toString('base64');
-
-    const data = await fetchGrafana<any>(
-      'https://grafana.k8s.metabit-trading.com/api/orgs',
-      {
-        Authorization: `Basic ${credentials}`,
-      },
-    );
-
+    const data = await fetchGrafanaOrgs();
     return res.status(200).json(data);
   } catch (error) {
     logger.error('Error fetching Grafana orgs:', error);
