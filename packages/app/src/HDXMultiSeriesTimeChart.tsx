@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
@@ -116,17 +115,24 @@ const HDXLineChartTooltip = withErrorBoundary(
   },
 );
 
-function CopyableLegendItem({ entry }: any) {
+function CopyableLegendItem({ entry, generateSearchUrlForSeries }: any) {
+  const searchUrl = generateSearchUrlForSeries(entry.value);
+
+  const handleClick = () => {
+    // 保持原先的复制功能
+    window.navigator.clipboard.writeText(entry.value);
+    notifications.show({ color: 'green', message: `Copied to clipboard` });
+    // 同时在新标签页打开链接
+    window.open(searchUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <span
       className={styles.legendItem}
       style={{ color: entry.color }}
       role="button"
-      onClick={() => {
-        window.navigator.clipboard.writeText(entry.value);
-        notifications.show({ color: 'green', message: `Copied to clipboard` });
-      }}
-      title="Click to expand"
+      onClick={handleClick}
+      title="Click to copy"
     >
       <div className="d-flex gap-1 items-center justify-center">
         <div>
@@ -148,16 +154,28 @@ function CopyableLegendItem({ entry }: any) {
   );
 }
 
-function ExpandableLegendItem({ entry, expanded }: any) {
+function ExpandableLegendItem({
+  entry,
+  expanded,
+  generateSearchUrlForSeries,
+}: any) {
   const [_expanded, setExpanded] = useState(false);
   const isExpanded = _expanded || expanded;
+  const searchUrl = generateSearchUrlForSeries(entry.value);
+
+  const handleClick = () => {
+    // 保持原先的展开/收起功能
+    setExpanded(v => !v);
+    // 同时在新标签页打开链接
+    window.open(searchUrl, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <span
       className={`d-flex gap-1 items-center justify-center ${styles.legendItem}`}
       style={{ color: entry.color }}
       role="button"
-      onClick={() => setExpanded(v => !v)}
+      onClick={handleClick}
       title="Click to expand"
     >
       <div>
@@ -183,8 +201,10 @@ export const LegendRenderer = memo<{
     value: string;
     color: string;
   }[];
+  generateSearchUrlForSeries: (lineName: string) => string | null;
 }>(props => {
   const payload = props.payload ?? [];
+  const { generateSearchUrlForSeries } = props;
 
   const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
   const restItems = payload.slice(MAX_LEGEND_ITEMS);
@@ -194,8 +214,8 @@ export const LegendRenderer = memo<{
       {shownItems.map((entry, index) => (
         <ExpandableLegendItem
           key={`item-${index}`}
-          value={entry.value}
           entry={entry}
+          generateSearchUrlForSeries={generateSearchUrlForSeries}
         />
       ))}
       {restItems.length ? (
@@ -210,8 +230,8 @@ export const LegendRenderer = memo<{
               {restItems.map((entry, index) => (
                 <CopyableLegendItem
                   key={`item-${index}`}
-                  value={entry.value}
                   entry={entry}
+                  generateSearchUrlForSeries={generateSearchUrlForSeries}
                 />
               ))}
             </div>
@@ -239,6 +259,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
   showLegend = true,
+  generateSearchUrlForSeries,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -255,6 +276,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
+  generateSearchUrlForSeries: (lineName: string) => string | null;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -521,7 +543,11 @@ export const MemoChart = memo(function MemoChart({
           <Legend
             iconSize={10}
             verticalAlign="bottom"
-            content={<LegendRenderer />}
+            content={
+              <LegendRenderer
+                generateSearchUrlForSeries={generateSearchUrlForSeries}
+              />
+            }
             offset={-100}
           />
         )}

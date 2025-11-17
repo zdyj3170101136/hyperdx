@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
@@ -17,6 +17,7 @@ import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
+import { generateSearchUrl } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -129,7 +130,7 @@ function DBTimeChartComponent({
   }, [activeClickPayload]);
 
   const qparams = useMemo(() => {
-    if (clickedActiveLabelDate == null || !source?.id == null) {
+    if (!source?.id) {
       return null;
     }
     const isMetricChart = isMetricChartConfig(config);
@@ -140,10 +141,9 @@ function DBTimeChartComponent({
       });
       return null;
     }
-    const from = clickedActiveLabelDate.getTime();
-    const to = add(clickedActiveLabelDate, {
-      seconds: convertGranularityToSeconds(granularity),
-    }).getTime();
+    // 使用 dateRange, 这样总是会构建成功。
+    const from = dateRange[0].getTime();
+    const to = dateRange[1].getTime();
     let where = config.where;
     let whereLanguage = config.whereLanguage || 'lucene';
     if (
@@ -162,7 +162,60 @@ function DBTimeChartComponent({
       from: from.toString(),
       to: to.toString(),
     });
-  }, [clickedActiveLabelDate, config, granularity, source]);
+  }, [dateRange, config, source]);
+
+  const generateSearchUrlForSeries = useCallback(
+    (lineName: string) => {
+      // 将 legend 中的 groupby column 的值作为筛选条件构建 search
+      const groupByFields = config.groupBy.split(',');
+      const groupByValues = lineName.split(',');
+
+      const fieldValueMap = new Map<string, string>();
+      groupByFields.forEach((field: string, index: number) => {
+        fieldValueMap.set(field, groupByValues[index]);
+      });
+
+      // Copy qparams to newQparams
+      const newQparams = new URLSearchParams(qparams?.toString());
+
+      // Convert field name: LogAttributes.host.a -> LogAttributes['host.a']
+      const formatFieldName = (field: string): string => {
+        const firstDotIndex = field.indexOf('.');
+        if (firstDotIndex === -1) {
+          return field;
+        }
+        const prefix = field.substring(0, firstDotIndex);
+        const suffix = field.substring(firstDotIndex + 1);
+        return `${prefix}['${suffix}']`;
+      };
+
+      let groupByFilters = '';
+      if (newQparams.get('whereLanguage') === 'lucene') {
+        groupByFilters = Array.from(fieldValueMap.entries())
+          .map(([field, value]) => {
+            const formattedField = formatFieldName(field);
+            return `${formattedField}:"${value}"`;
+          })
+          .join(' AND ');
+      } else {
+        groupByFilters = Array.from(fieldValueMap.entries())
+          .map(([field, value]) => {
+            return `${field} = '${value}'`;
+          })
+          .join(' AND ');
+      }
+
+      const existingWhere = newQparams.get('where') || '';
+      const combinedWhere = existingWhere.trim()
+        ? `${existingWhere} AND ${groupByFilters}`
+        : groupByFilters;
+      newQparams.set('where', combinedWhere);
+      newQparams.set('select', config.searchSelect);
+
+      return `/search?${newQparams.toString()}`;
+    },
+    [qparams],
+  );
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -317,6 +370,7 @@ function DBTimeChartComponent({
           setIsClickActive={setActiveClickPayload}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
+          generateSearchUrlForSeries={generateSearchUrlForSeries}
         />
       </div>
     </div>

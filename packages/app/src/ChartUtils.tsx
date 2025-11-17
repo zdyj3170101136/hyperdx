@@ -488,11 +488,7 @@ export function formatResponseForTimeChart({
 
     for (const valueColumn of valueColumns) {
       const tsBucket = tsBucketMap.get(ts) ?? {};
-
-      const keyName = [
-        valueColumn.name,
-        ...groupColumns.map(g => row[g.name]),
-      ].join(' · ');
+      const keyName = [...groupColumns.map(g => row[g.name])].join(',');
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error

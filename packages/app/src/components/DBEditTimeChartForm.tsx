@@ -648,6 +648,29 @@ export default function EditTimeChartForm({
                 </>
               )}
               <Divider mt="md" mb="sm" />
+              <Flex align="center" mt="sm">
+                <Text
+                  c="gray.4"
+                  me="sm"
+                  size="sm"
+                  style={{
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Search Select
+                </Text>
+                <div style={{ flexGrow: 1 }}>
+                  <SQLInlineEditorControlled
+                    tableConnections={tcFromSource(tableSource)}
+                    control={control}
+                    name={`searchSelect`}
+                    placeholder="Optional: SQL SELECT expression for search queries"
+                    onSubmit={onSubmit}
+                    disableKeywordAutocomplete
+                  />
+                </div>
+              </Flex>
+              <Divider mt="md" mb="sm" />
               <Flex mt={4} align="center" justify="space-between">
                 <Group gap={0}>
                   {displayType !== DisplayType.Number && (

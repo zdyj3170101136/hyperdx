@@ -444,6 +444,8 @@ export const SavedChartConfigSchema = z.intersection(
   ),
   SelectSQLStatementSchema.omit({
     from: true,
+  }).extend({
+    searchSelect: SelectListSchema.optional(),
   }),
 );
 
