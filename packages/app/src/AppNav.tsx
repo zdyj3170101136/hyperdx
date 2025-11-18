@@ -699,19 +699,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </div>
                 </Collapse>
               )}
-              <AppNavLink
-                label="Chart Explorer"
-                href="/chart"
-                iconName="bi-graph-up"
-              />
               {!IS_LOCAL_MODE && (
                 <AppNavLink label="Alerts" href="/alerts" iconName="bi-bell" />
               )}
-              <AppNavLink
-                label="Client Sessions"
-                href="/sessions"
-                iconName="bi-laptop"
-              />
 
               <AppNavLink
                 label="Dashboards"
@@ -773,76 +763,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         </>
                       )
                     )}
-
-                    <AppNavGroupLabel
-                      name="Presets"
-                      collapsed={isDashboardsPresetsCollapsed}
-                      onClick={() =>
-                        setDashboardsPresetsCollapsed(
-                          !isDashboardsPresetsCollapsed,
-                        )
-                      }
-                    />
-                    <Collapse in={!isDashboardsPresetsCollapsed}>
-                      <Link
-                        href={`/clickhouse`}
-                        tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
-                            pathname.startsWith('/clickhouse'),
-                        })}
-                      >
-                        ClickHouse
-                      </Link>
-                      <Link
-                        href={`/services`}
-                        tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
-                            pathname.startsWith('/services'),
-                        })}
-                      >
-                        Services
-                      </Link>
-                      {IS_K8S_DASHBOARD_ENABLED && (
-                        <Link
-                          href={`/kubernetes`}
-                          tabIndex={0}
-                          className={cx(styles.listLink, {
-                            [styles.listLinkActive]:
-                              pathname.startsWith('/kubernetes'),
-                          })}
-                        >
-                          Kubernetes
-                        </Link>
-                      )}
-                    </Collapse>
                   </div>
                 </Collapse>
               )}
-
-              {!IS_LOCAL_MODE && (
-                <Box mt="sm">
-                  <AppNavLink
-                    label="Team Settings"
-                    href="/team"
-                    iconName="bi-gear"
-                  />
-                </Box>
-              )}
             </div>
           </div>
-          {!isCollapsed && (
-            <>
-              <div
-                style={{ width: navWidth, paddingBottom: 80 }}
-                className="px-3 mb-2 mt-4"
-              >
-                <OnboardingChecklist onAddDataClick={openInstallInstructions} />
-                <AppNavCloudBanner />
-              </div>
-            </>
-          )}
         </ScrollArea>
 
         <div

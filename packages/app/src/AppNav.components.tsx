@@ -115,17 +115,6 @@ export const AppNavUserMenu = ({
         </Paper>
       </Menu.Target>
       <Menu.Dropdown>
-        {IS_LOCAL_MODE ? (
-          <Menu.Label fz="xs">Local mode</Menu.Label>
-        ) : (
-          <Menu.Item
-            href="/team"
-            component={Link}
-            leftSection={<Icon name="gear" />}
-          >
-            Team Settings
-          </Menu.Item>
-        )}
         <Menu.Item
           leftSection={<Icon name="person-gear" />}
           onClick={onClickUserPreferences}
@@ -222,25 +211,11 @@ export const AppNavHelpMenu = ({
             </Menu.Label>
 
             <Menu.Item
-              href="https://hyperdx.io/docs/v2"
+              href="https://metabit-trading.feishu.cn/docx/GxYhdPZiXomKOFxdem1cIdi1nUd"
               component="a"
               leftSection={<Icon name="book" />}
             >
               Documentation
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<Icon name="discord" />}
-              component="a"
-              href="https://hyperdx.io/discord"
-              target="_blank"
-            >
-              Discord Community
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<Icon name="lightbulb" />}
-              onClick={onAddDataClick}
-            >
-              Setup Instructions
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
