@@ -116,6 +116,13 @@ export const AppNavUserMenu = ({
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Item
+          href="/clickhouse-roles"
+          component={Link}
+          leftSection={<Icon name="key" />}
+        >
+          Roles
+        </Menu.Item>
+        <Menu.Item
           leftSection={<Icon name="person-gear" />}
           onClick={onClickUserPreferences}
         >
