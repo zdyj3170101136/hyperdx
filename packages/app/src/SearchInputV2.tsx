@@ -211,7 +211,7 @@ export default function SearchInputV2({
             <a
               className="text-muted"
               target="_blank"
-              href="https://hyperdx.io/docs/search#search-syntax"
+              href="https://metabit-trading.feishu.cn/docx/GxYhdPZiXomKOFxdem1cIdi1nUd#share-Jzf1dCWlCoOVJVxoS0Fc7Tmcnzg"
               rel="noreferrer"
             >
               <i className="bi bi-book me-1" />
