@@ -8,21 +8,51 @@ import { SavedSearch } from '@/models/savedSearch';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
-export async function getSavedSearches(teamId: string) {
-  const savedSearches = await SavedSearch.find({ team: teamId });
+export async function getSavedSearches(
+  teamId: string,
+  options?: {
+    limit?: number;
+    skip?: number;
+  },
+) {
+  const queryFilter: any = { team: teamId };
+  const total = await SavedSearch.countDocuments(queryFilter);
+
+  let query = SavedSearch.find(queryFilter);
+
+  // Apply pagination
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+  if (options?.skip !== undefined) {
+    query = query.skip(options.skip);
+  }
+
+  // Sort by updatedAt descending (most recently updated first)
+  query = query.sort({ updatedAt: -1 });
+
+  const savedSearches = await query;
+
+  // Get alerts for the returned saved searches only (more efficient)
+  const savedSearchIds = savedSearches.map(ss => ss._id);
   const alerts = await Alert.find(
-    { team: teamId, savedSearch: { $exists: true, $ne: null } },
+    {
+      team: teamId,
+      savedSearch: { $in: savedSearchIds },
+    },
     { __v: 0 },
   );
 
   const alertsBySavedSearchId = groupBy(alerts, 'savedSearch');
 
-  return savedSearches.map(savedSearch => ({
+  const data = savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
     alerts: alertsBySavedSearchId[savedSearch._id.toString()]
       ?.map(alert => alert.toJSON())
       .map(({ _id, ...alert }) => ({ id: _id, ...alert })), // Remap _id to id
   }));
+
+  return { data, total };
 }
 
 export function getSavedSearch(teamId: string, savedSearchId: string) {

@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { SavedSearch } from '@hyperdx/common-utils/dist/types';
 import {
   useMutation,
@@ -10,14 +9,30 @@ import {
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
 
-export function useSavedSearches() {
+type SavedSearchesResponse = {
+  data: SavedSearch[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export function useSavedSearches(page: number = 1, limit: number = 10) {
   return useQuery({
-    queryKey: ['saved-search'],
+    queryKey: ['saved-search', page, limit],
     queryFn: async () => {
       if (IS_LOCAL_MODE) {
-        return [];
+        return { data: [], pagination: undefined };
       } else {
-        return hdxServer('saved-search').json<SavedSearch[]>();
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: limit.toString(),
+        });
+        return hdxServer(
+          `saved-search?${params.toString()}`,
+        ).json<SavedSearchesResponse>();
       }
     },
   });

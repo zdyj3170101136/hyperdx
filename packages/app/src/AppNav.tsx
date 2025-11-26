@@ -21,6 +21,7 @@ import {
   Group,
   Input,
   Loader,
+  Pagination,
   ScrollArea,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -334,12 +335,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     }
   }, []);
 
+  // Pagination state for saved searches
+  const [savedSearchesPage, setSavedSearchesPage] = useState(1);
+  const savedSearchesLimit = 10;
+
   const {
     data: logViewsData,
     isLoading: isLogViewsLoading,
     refetch: refetchLogViews,
-  } = useSavedSearches();
-  const logViews = logViewsData ?? [];
+  } = useSavedSearches(savedSearchesPage, savedSearchesLimit);
+
+  // Extract data from paginated response
+  const logViews = logViewsData?.data ?? [];
+  const savedSearchesPagination = logViewsData?.pagination;
 
   const updateDashboard = useUpdateDashboard();
   const updateLogView = useUpdateSavedSearch();
@@ -672,7 +680,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             }}
                           />
 
-                          {logViews.length === 0 && (
+                          {logViews.length === 0 && !isLogViewsLoading && (
                             <div className={styles.listEmptyMsg}>
                               No saved searches
                             </div>
@@ -693,6 +701,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                               No results matching <i>{searchesListQ}</i>
                             </div>
                           ) : null}
+
+                          {!searchesListQ &&
+                            savedSearchesPagination &&
+                            savedSearchesPagination.totalPages > 1 && (
+                              <div className="d-flex justify-content-center mt-2 mb-2">
+                                <Pagination
+                                  value={savedSearchesPage}
+                                  onChange={setSavedSearchesPage}
+                                  total={savedSearchesPagination.totalPages}
+                                  size="xs"
+                                />
+                              </div>
+                            )}
                         </>
                       )
                     )}
