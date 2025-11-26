@@ -20,9 +20,25 @@ router.get('/', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
 
-    const savedSearches = await getSavedSearches(teamId.toString());
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
 
-    return res.json(savedSearches);
+    const { data, total } = await getSavedSearches(teamId.toString(), {
+      limit,
+      skip,
+    });
+
+    return res.json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (e) {
     next(e);
   }
