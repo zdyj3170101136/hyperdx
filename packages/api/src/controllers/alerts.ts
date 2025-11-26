@@ -208,14 +208,55 @@ export const deleteSavedSearchAlerts = async (
   });
 };
 
-export const getAlertsEnhanced = async (teamId: ObjectId) => {
-  return Alert.find({ team: teamId }).populate<{
+export const getAlertsEnhanced = async (
+  teamId: ObjectId,
+  options?: {
+    limit?: number;
+    skip?: number;
+    sort?: string;
+    order?: 'asc' | 'desc';
+    search?: string;
+  },
+) => {
+  // Build query with search filter
+  const queryFilter: any = { team: teamId };
+  if (options?.search) {
+    // Use regex for case-insensitive search (ILIKE equivalent)
+    queryFilter.name = { $regex: options.search, $options: 'i' };
+  }
+
+  const total = await Alert.countDocuments(queryFilter);
+
+  let query = Alert.find(queryFilter);
+
+  // Apply sorting
+  if (options?.sort === 'status') {
+    // Sort by state in database: ALERT (0) > OK (1) > DISABLED (2)
+    const sortOrder = options?.order === 'desc' ? -1 : 1;
+    query = query.sort({ state: sortOrder });
+  } else if (options?.sort === 'name') {
+    // Sort by name field in database
+    const sortOrder = options?.order === 'desc' ? -1 : 1;
+    query = query.sort({ name: sortOrder });
+  }
+
+  // Apply pagination before populate (more efficient)
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+  if (options?.skip !== undefined) {
+    query = query.skip(options.skip);
+  }
+
+  const alerts = await query.populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
   }>(['savedSearch', 'dashboard', 'silenced.by']);
+
+  return { alerts, total };
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

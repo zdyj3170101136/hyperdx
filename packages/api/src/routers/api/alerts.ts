@@ -22,7 +22,23 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const alerts = await getAlertsEnhanced(teamId);
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Parse sort parameters
+    const sort = req.query.sort as string | undefined;
+    const order = req.query.order as 'asc' | 'desc' | undefined;
+    const search = req.query.q as string | undefined;
+
+    const { alerts, total } = await getAlertsEnhanced(teamId, {
+      limit,
+      skip,
+      sort,
+      order,
+      search,
+    });
 
     const data = await Promise.all(
       alerts.map(async alert => {
@@ -70,6 +86,7 @@ router.get('/', async (req, res, next) => {
           }),
           ..._.pick(alert, [
             '_id',
+            'name',
             'interval',
             'threshold',
             'thresholdType',
@@ -84,6 +101,12 @@ router.get('/', async (req, res, next) => {
     );
     res.json({
       data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (e) {
     next(e);
