@@ -23,6 +23,12 @@ type ServicesResponse = {
 
 type AlertsResponse = {
   data: AlertsPageItem[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 type ApiAlertInput = Alert;
@@ -152,10 +158,33 @@ const api = {
         }).json(),
     });
   },
-  useAlerts() {
+  useAlerts(
+    page: number = 1,
+    limit: number = 20,
+    sort?: string | null,
+    order?: 'asc' | 'desc' | null,
+    search?: string | null,
+  ) {
     return useQuery({
-      queryKey: [`alerts`],
-      queryFn: () => hdxServer(`alerts`).json() as Promise<AlertsResponse>,
+      queryKey: [`alerts`, page, limit, sort, order, search],
+      queryFn: () => {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: limit.toString(),
+        });
+        if (sort) {
+          params.append('sort', sort);
+        }
+        if (order) {
+          params.append('order', order);
+        }
+        if (search) {
+          params.append('q', search);
+        }
+        return hdxServer(
+          `alerts?${params.toString()}`,
+        ).json() as Promise<AlertsResponse>;
+      },
     });
   },
   useServices() {
