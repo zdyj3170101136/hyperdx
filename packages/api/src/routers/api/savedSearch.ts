@@ -25,9 +25,13 @@ router.get('/', async (req, res, next) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
+    // Parse search parameter
+    const search = req.query.q as string | undefined;
+
     const { data, total } = await getSavedSearches(teamId.toString(), {
       limit,
       skip,
+      search,
     });
 
     return res.json({
