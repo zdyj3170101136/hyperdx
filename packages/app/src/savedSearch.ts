@@ -19,9 +19,13 @@ type SavedSearchesResponse = {
   };
 };
 
-export function useSavedSearches(page: number = 1, limit: number = 10) {
+export function useSavedSearches(
+  page: number = 1,
+  limit: number = 10,
+  search?: string | null,
+) {
   return useQuery({
-    queryKey: ['saved-search', page, limit],
+    queryKey: ['saved-search', page, limit, search],
     queryFn: async () => {
       if (IS_LOCAL_MODE) {
         return { data: [], pagination: undefined };
@@ -30,6 +34,9 @@ export function useSavedSearches(page: number = 1, limit: number = 10) {
           page: page.toString(),
           limit: limit.toString(),
         });
+        if (search) {
+          params.append('q', search);
+        }
         return hdxServer(
           `saved-search?${params.toString()}`,
         ).json<SavedSearchesResponse>();

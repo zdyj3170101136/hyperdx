@@ -13,9 +13,16 @@ export async function getSavedSearches(
   options?: {
     limit?: number;
     skip?: number;
+    search?: string;
   },
 ) {
+  // Build query with search filter
   const queryFilter: any = { team: teamId };
+  if (options?.search) {
+    // Use regex for case-insensitive search (ILIKE equivalent)
+    queryFilter.name = { $regex: options.search, $options: 'i' };
+  }
+
   const total = await SavedSearch.countDocuments(queryFilter);
 
   let query = SavedSearch.find(queryFilter);

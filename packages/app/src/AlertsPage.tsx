@@ -278,10 +278,8 @@ export default function AlertsPage() {
 
   // Reset page to 1 when search query changes
   React.useEffect(() => {
-    if (searchQuery && page !== 1) {
-      setPage(1);
-    }
-  }, [searchQuery, page, setPage]);
+    setPage(1);
+  }, [searchQuery, setPage]);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {

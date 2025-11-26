@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
@@ -339,15 +345,28 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const [savedSearchesPage, setSavedSearchesPage] = useState(1);
   const savedSearchesLimit = 10;
 
+  // Search state for saved searches (server-side search)
+  const [searchInput, setSearchInput] = useState(''); // Local input state
+  const [searchesListQ, setSearchesListQ] = useState(''); // Actual search query (triggered on Enter)
+
   const {
     data: logViewsData,
     isLoading: isLogViewsLoading,
     refetch: refetchLogViews,
-  } = useSavedSearches(savedSearchesPage, savedSearchesLimit);
+  } = useSavedSearches(
+    savedSearchesPage,
+    savedSearchesLimit,
+    searchesListQ || undefined, // Pass search query to server
+  );
 
   // Extract data from paginated response
   const logViews = logViewsData?.data ?? [];
   const savedSearchesPagination = logViewsData?.pagination;
+
+  // Reset page to 1 when search query changes
+  useEffect(() => {
+    setSavedSearchesPage(1);
+  }, [searchesListQ]);
 
   const updateDashboard = useUpdateDashboard();
   const updateLogView = useUpdateSavedSearch();
@@ -410,17 +429,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       });
     }
   }, [meData]);
-
-  const {
-    q: searchesListQ,
-    setQ: setSearchesListQ,
-    filteredList: filteredSearchesList,
-    groupedFilteredList: groupedFilteredSearchesList,
-  } = useSearchableList({
-    items: logViews,
-    untaggedGroupName: UNTAGGED_SEARCHES_GROUP_NAME,
-  });
-
   const {
     q: dashboardsListQ,
     setQ: setDashboardsListQ,
@@ -483,32 +491,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     ],
   );
 
-  const handleLogViewDragEnd = useCallback(
-    (target: HTMLElement | null, name: string | null) => {
-      if (!target?.dataset.savedsearchid || name == null) {
-        return;
-      }
-      const logView = logViews.find(
-        lv => lv.id === target.dataset.savedsearchid,
-      );
-      if (logView?.tags?.includes(name)) {
-        return;
-      }
-      updateLogView.mutate(
-        {
-          id: target.dataset.savedsearchid,
-          tags: name === UNTAGGED_SEARCHES_GROUP_NAME ? [] : [name],
-        },
-        {
-          onSuccess: () => {
-            refetchLogViews();
-          },
-        },
-      );
-    },
-    [logViews, refetchLogViews, updateLogView],
-  );
-
+  // 移除 savedSearch 的分组逻辑以简化实现。
   const renderDashboardLink = useCallback(
     (dashboard: ServerDashboard) => (
       <Link
@@ -653,7 +636,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     : undefined
                 }
               />
-
               {!isCollapsed && (
                 <Collapse in={isSearchExpanded}>
                   <div className={styles.list}>
@@ -670,9 +652,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         <>
                           <SearchInput
                             placeholder="Saved Searches"
-                            value={searchesListQ}
-                            onChange={setSearchesListQ}
+                            value={searchInput}
+                            onChange={setSearchInput}
                             onEnterDown={() => {
+                              setSearchesListQ(searchInput); // Trigger search on Enter
                               (
                                 savedSearchesResultsRef?.current
                                   ?.firstChild as HTMLAnchorElement
@@ -686,24 +669,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             </div>
                           )}
                           <div ref={savedSearchesResultsRef}>
-                            <AppNavLinkGroups
-                              name="saved-searches"
-                              groups={groupedFilteredSearchesList}
-                              renderLink={renderLogViewLink}
-                              forceExpandGroups={!!searchesListQ}
-                              onDragEnd={handleLogViewDragEnd}
-                            />
+                            {logViews.map(savedSearch => (
+                              <div key={savedSearch.id}>
+                                {renderLogViewLink(savedSearch)}
+                              </div>
+                            ))}
                           </div>
 
-                          {searchesListQ &&
-                          filteredSearchesList.length === 0 ? (
-                            <div className={styles.listEmptyMsg}>
-                              No results matching <i>{searchesListQ}</i>
-                            </div>
-                          ) : null}
-
-                          {!searchesListQ &&
-                            savedSearchesPagination &&
+                          {savedSearchesPagination &&
                             savedSearchesPagination.totalPages > 1 && (
                               <div className="d-flex justify-content-center mt-2 mb-2">
                                 <Pagination
@@ -714,6 +687,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                                 />
                               </div>
                             )}
+
+                          {searchesListQ &&
+                          logViews.length === 0 &&
+                          !isLogViewsLoading ? (
+                            <div className={styles.listEmptyMsg}>
+                              No results matching <i>{searchesListQ}</i>
+                            </div>
+                          ) : null}
                         </>
                       )
                     )}
