@@ -127,7 +127,7 @@ export function useGetKeyValues(
       ...keys,
       disableRowLimit,
     ],
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       (
         await Promise.all(
           chartConfigsArr.map(chartConfig =>
@@ -136,6 +136,7 @@ export function useGetKeyValues(
               keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
               limit,
               disableRowLimit,
+              abort_signal: signal,
             }),
           ),
         )

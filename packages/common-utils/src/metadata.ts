@@ -502,11 +502,13 @@ export class Metadata {
     keys,
     limit = 20,
     disableRowLimit = false,
+    abort_signal,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    abort_signal?: AbortSignal;
   }) {
     chartConfig.limit = {
       limit: limit,
@@ -542,6 +544,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId: chartConfig.connection,
+            abort_signal,
             clickhouse_settings: !disableRowLimit
               ? {
                   max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),

@@ -120,7 +120,7 @@ const proxyMiddleware: RequestHandler =
       return _req._hdx_connection.host;
     },
     on: {
-      proxyReq: (proxyReq, _req) => {
+      proxyReq: (proxyReq, _req, _res) => {
         // set user-agent to the hyperdx version identifier
         proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
 
@@ -138,14 +138,25 @@ const proxyMiddleware: RequestHandler =
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
 
-        if (_req.method === 'POST') {
-          // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
-          proxyReq.write(_req.body);
-        }
+        //if (_req.method === 'POST') {
+        // 将 http post 方法修改为 http get 方法
+        // 确保 cancel_http_readonly_queries_on_client_close 能够正常使用
+        // see https://github.com/ClickHouse/ClickHouse/issues/92786#issuecomment-3681728808
+        proxyReq.method = 'GET';
+        // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
+        proxyReq.write(_req.body);
+        //}
         const newPath = _req.params[0];
         proxyReq.path = `/${newPath}?${qparams}`;
+
+        // When upstream client disconnects, abort the downstream request to ClickHouse
+        _res.on('close', () => {
+          if (!(_res as Response).writableFinished) {
+            proxyReq.destroy();
+          }
+        });
       },
-      proxyRes: (proxyRes, _req, res) => {
+      proxyRes: (proxyRes, _req) => {
         // since clickhouse v24, the cors headers * will be attached to the response by default
         // which will cause the browser to block the response
         if (_req.headers['access-control-request-method']) {

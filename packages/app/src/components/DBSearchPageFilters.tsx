@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -503,12 +503,13 @@ const DBSearchPageFiltersComponent = ({
   const facetQueries = useQueries({
     queries: chartConfigsForKeys.map(({ config, keys }) => ({
       queryKey: ['useGetKeyValues', config, keys, keyLimit],
-      queryFn: async () => {
+      queryFn: async ({ signal }) => {
         const metadata = getMetadata();
         return await metadata.getKeyValues({
           chartConfig: config,
           keys: keys,
           limit: keyLimit,
+          abort_signal: signal,
         });
       },
       staleTime: 1000 * 60 * 5, // Cache for 5 minutes

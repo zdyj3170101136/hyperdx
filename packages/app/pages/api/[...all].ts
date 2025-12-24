@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
 
@@ -17,6 +17,16 @@ export default (req: NextApiRequest, res: NextApiResponse) => {
     pathRewrite: { '^/api': '' },
     target: process.env.SERVER_URL || DEFAULT_SERVER_URL,
     autoRewrite: true,
+    on: {
+      proxyReq: (proxyReq, _req, _res) => {
+        // Listen for client disconnect
+        _res.on('close', () => {
+          if (!_res.writableFinished) {
+            proxyReq.destroy();
+          }
+        });
+      },
+    },
     // ...(IS_DEV && {
     //   logger: console,
     // }),
